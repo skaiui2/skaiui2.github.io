@@ -2,7 +2,7 @@
 <p>​    笔者之前突发奇想，准备写一个极其微小的实时操作系统内核，在经过数天的努力后，这个RTOS诞生了。令读者比较意外的是，它的程序只有400行左右。但就是这短短的400行，完成了动态内存管理、多线程、优先级、低功耗管理、调度延时等功能。与FreeRTOS内核相比，它的功能已经大差不差了。</p>
 <p>​    麻雀虽小，五脏俱全。所以笔者给它命名为skRTOS_Sparrow，寓意它的微小性和灵活性。<br> 笔者准备把Sparrow作为一个学习用途的RTOS，并在接下来的博客中讲解它的原理，由于它只有内核，并不具有队列、信号量等应用，作为一个RTOS，它显然是不完整的，有兴趣的读者可以尝试自己完成。(笔者也许哪一天会添加这些功能，但具体是哪一天呢？笔者也不知道（ &gt; &lt;）。 )<br>​     好的，现在先让我们进行一个小实验：对sparrow进行移植并使用。</p>
 <p>​    读者需要一块单片机，比如stm32f103c8t6最小系统板。例如这种：</p>
-<p>​           <img src="https://skaiui2.github.io/img/sparrow_a1.png" alt="UML"><br>   如果读者需要sparrow的源码，可以到我的github：<a target="_blank" rel="noopener" href="https://github.com/skaiui2/SKRTOS_sparrow/tree/source%E8%BF%99%E9%87%8C%E4%B8%8B%E8%BD%BD%E3%80%82">https://github.com/skaiui2/SKRTOS_sparrow/tree/source这里下载。</a><br>   下载完后，让我们打开cubemx：新建工程，mcu选择stm32f103c8t6。</p>
+<p>​           <img src="https://skaiui2.github.io/img/sparrow_a1.png" alt="img"><br>   如果读者需要sparrow的源码，可以到我的github：<a target="_blank" rel="noopener" href="https://github.com/skaiui2/SKRTOS_sparrow/tree/source%E8%BF%99%E9%87%8C%E4%B8%8B%E8%BD%BD%E3%80%82">https://github.com/skaiui2/SKRTOS_sparrow/tree/source这里下载。</a><br>   下载完后，让我们打开cubemx：新建工程，mcu选择stm32f103c8t6。</p>
 <p>rcc设置如下：</p>
 <p><img src="https://skaiui2.github.io/img/sparrow_a2.png" alt="img"></p>
 <p>中断设置如下：</p>
