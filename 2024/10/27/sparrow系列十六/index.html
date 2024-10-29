@@ -1,0 +1,73 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>sparrow系列十六 | Hexo</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="https://unpkg.com/normalize.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/pure-min.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="https://unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="https://unpkg.com/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="https://unpkg.com/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="https://unpkg.com/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="https://unpkg.com/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 7.3.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">sparrow系列十六</h1><a id="logo" href="/.">Hexo</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a><a href="/atom.xml"><i class="fa fa-rss"> 订阅</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">sparrow系列十六</h1><div class="post-meta">2024-10-27</div><div class="post-content"><p>skaiuijing</p>
+<h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>在前面我们完成了Sparrow的临界区的代码，使用临界区，能够解决常见的并发问题，现在该完善我们的调度算法了。</p>
+<p>调度算法在操作系统领域常常是热门的话题。不同的用途将会使用不同的调度策略。在本节，笔者将为大家介绍一些操作系统中的调度算法的知识，加深读者对操作系统的理解。</p>
+<h2 id="linux内核中的调度策略"><a href="#linux内核中的调度策略" class="headerlink" title="linux内核中的调度策略"></a>linux内核中的调度策略</h2><p>调度策略负责进行任务选择和任务切换，linux内核中的调度基于分时技术：多个进程以“时间多路复用”的方式运行，将时间进行分割，不同段时间运行不同的任务，这段时间被称之为时间片。</p>
+<h3 id="进程的分类"><a href="#进程的分类" class="headerlink" title="进程的分类"></a>进程的分类</h3><p>linux内核中通常有三类进程：</p>
+<p>交互式进程：用于和用户发生交互，对时间不是很敏感，时不时卡一卡也是在用户容许范围内。</p>
+<p>批处理进程：在后台运行的进程，不与用户直接接触，例如编译程序和科学计算程序等等。</p>
+<p>实时进程：对时间要求非常严格的程序，例如自动控制程序。</p>
+<h3 id="进程的抢占"><a href="#进程的抢占" class="headerlink" title="进程的抢占"></a>进程的抢占</h3><p>linux内核是抢占式的，也就是说，不同的进程有不同的优先级，如果响应的进程的优先级比当前运行的进程的优先级要高，那么当前的进程就会被响应的进程所抢占。</p>
+<h3 id="调度算法"><a href="#调度算法" class="headerlink" title="调度算法"></a>调度算法</h3><p>早期linux版本的内核的调度算法比较简单：扫描并且计算所有就绪进程的优先级，然后选择最佳的进程来运行，参考的标准是时间片，时间片大的进程往往优先运行。这一算法的缺点非常明显，就是时间不固定。</p>
+<p>当然，到了2.6版本之后，linux内核的调度算法已经复杂到不可想象的程度了，这跟多处理器的出现也有很大的关系，此时，调度选择算法会在固定的时间选出任务执行，以确保CPU的运行速度。</p>
+<h2 id="Linux0-11版本调度算法"><a href="#Linux0-11版本调度算法" class="headerlink" title="Linux0.11版本调度算法"></a>Linux0.11版本调度算法</h2><p>让我们先看看linux内核0.11版本的调度算法。</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/ddd7af9f9cc2386688a820746e820620.png" alt="img"></p>
+<p>首先是前几行：</p>
+<p>c其实代表的是保存进程时间片的值</p>
+<p>next表示下一个进程的序列</p>
+<p>i,p都与挂载进程的任务队列有关，i代表数组下标，p是指向队列本身的指针。</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/e05388f688146ef72e7a91092d93826e.png" alt="img"></p>
+<p>其实这就是一个很常见的比较大小的算法，首先检查这个进程的状态是不是运行状态，然后进行比较，如果在运行队列里遇到比当前进程时间片大的进程，那么就替换成它，c更改为这个大的进程的时间片，next更改为这个进程的下标。</p>
+<p>通过这个比较算法，我们筛选出了队列里时间片最大的任务。接下来就是切换了，如果要切换的进程的时间片没有用完，也就是c&gt;0时，这个while循环会直接结束，程序会跳转到switch这里，这就是进程切换的函数。</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/ed99a44b09bd1bdd15fba6d3ee5d813f.png" alt="img"></p>
+<p>如果这个优先级高的进程的时间片已经用完了，也就是c&#x3D;&#x3D;0时，会进入for循环，这是对时间片的重新分配。因为我们从前面的排序已经知道，c就是被筛选出来的最大的时间片，如果c&#x3D;&#x3D;0，意味着所有的进程都没有了时间片。</p>
+<p>上面的for循环，其实就是根据优先级的大小来调整时间片的大小，最后每一个进程counter的值&#x3D;原先值&#x2F;2 +优先级。</p>
+<p>可能读者还会疑惑，为什么要加上*p-&gt;counter&gt;&gt;1呢？位于运行状态的进程的时间片不是都为0了吗？</p>
+<p>进程不止一种状态，显然，还在被阻塞的任务时间片肯定不为0啊，虽然运行状态的进程最终时间片都等于自身优先级的大小，但是阻塞任务就要考虑原先的时间片了，对原先时间片除以2，这是对平均时间片的综合考虑的结果，时间片过短，切换的开销会变大，时间片过长，进程看起来就不会是并行的。</p>
+<p>现在让我们来到switch_to函数：</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/f5b1e2015218923172c314895478e6f1.png" alt="img"></p>
+<p>在前文笔者简单讨论过进程的上下文切换，因为进程之间隔绝了资源，这往往意味着切换的步骤会变得简单一些，从代码中可以看出，主要是TSS（一个保存进程状态信息的结构体）的切换，但是在FreeRTOS中，则主要是对arm寄存器的操作，因为进程切换是所有的资源都进行了改变，而线程的切换则是在原有的资源上修修改改，本质是任务栈的切换。</p>
+<p>通过schedule和switch_to两个函数，我们知道了linux0.11版本是如何进行调度的，schedule负责时间片的分配和进程的选择，switch_to负责进程的切换。</p>
+<p>操作系统的调度器本质就是在进行选择和切换。</p>
+<p><strong>现在该来到常见的RTOS内核了</strong></p>
+<h2 id="FreeRTOS的调度算法"><a href="#FreeRTOS的调度算法" class="headerlink" title="FreeRTOS的调度算法"></a>FreeRTOS的调度算法</h2><p>让我们看看tasks.c文件中的这几行代码：</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/ca8b052911753b10cfae18c908b3d12e.png" alt="img"></p>
+<p>prvAddTaskToReadyList函数在<strong>每个任务在添加到就绪列表时都会执行</strong>，它会与uxTopReadyPriority进行<strong>比较</strong>，然后uxTopReadyPriority<strong>记录两者中的较大者</strong>，<strong>不断的对每一个新添加进来的任务优先级进行比较，这其实就是在找出最大的优先级</strong>。</p>
+<p><strong>这样做，遍历时就能直接找到优先级最高的线程。</strong></p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/db401e860e34af3aa3c5ed05767db807.png" alt="img"></p>
+<p>顺便一提，FreeRTOS中的任务优先级跟我们在mcu中学习到的中断优先级判断是不一样的，也跟RTT和uc&#x2F;os不一样，mcu中的中断优先级是数字越小，优先级越大，RTT和uc&#x2F;os的任务优先级也是这样，但FreeRTOS中是任务优先级的数字越大，优先级越大。</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/28e250262656e2994f37e522ea4e9136.png" alt="img"></p>
+<p>taskSELECT_HIGHEST_PRIORITY_TASK就是通用的选择算法的具体函数了，先对uxTopReadyPriority的值进行保存。</p>
+<p>configASSERT笔者之前提过，是断言，用来debug，如果uxTopPriority小于0，会触发它。</p>
+<p>每一个优先级都有一个特定的链表，while判断就绪链表的这个优先级是否有任务挂载在上面，如果没有，就继续找下一个优先级的链表，也就是–uxTopPriority。</p>
+<p>uxTopPriority被设定为是代表最大优先级的数字，自减操作代表从就绪列表最后一个链表（优先级最高的链表）开始查找，直到找到任务链表不为空的优先级任务，那么这个任务肯定也是所有任务中优先级最大的任务。</p>
+<p>然后获取这个任务的TCB并更新pxCurrentTCB（切换的具体函数），最后更新uxTopReadyPriority的值。</p>
+<h2 id="rt-thread内核的调度算法"><a href="#rt-thread内核的调度算法" class="headerlink" title="rt-thread内核的调度算法"></a>rt-thread内核的调度算法</h2><p>rt-thread是一个国产RTOS，和sylixOS这些OS一样，也是头部RTOS了，不过在国内的开源领域确实是当之无愧的第一RTOS。</p>
+<p>它是一个偏linux的RTOS，而且用面向对象的思想开发的，非常有特色。</p>
+<p>笔者决定再讲一讲rtt的选择算法，因为这种算法很常见，用途也非常广泛。</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/98b3b1788f737047a05fc2ad613463ce.png" alt="img"></p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/2ae061a28037c2d26c0851f6954a2851.png" alt="img"></p>
+<p>RTT使用的是查表法，让笔者简单介绍一下这种策略的思想。</p>
+<p>我们要查找一个链表中优先级最高的任务，最简便的做法就是for循环，一个个遍历比较，找到优先级最高的任务，这种做法很简便，缺点是复杂度过高,达到了o(n)，查询的时间很长。那么有没有使复杂度为1的方法呢？</p>
+<p>于是RTT使用了空间换时间的策略。</p>
+<p>假设我们有八个优先级，用八个位来表示它们。任务优先级为多少，那么就在哪个位置1。</p>
+<p>例如，task1优先级为5，那么优先级的数字就是00010000。</p>
+<p>在实时操作系统中，优先级数字越小，优先级越高，那么这个任务代表的1更靠近右侧。</p>
+<p>既然知道了这些，那么，把所有8个位的组合都列出来，判断每一个不同的数字最低位的1在哪个位，然后直接查询，不就可以知道任务的优先级最高是多少吗？然后顺着优先级，去执行对应的任务。</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/4c4b8672b3dea65ebd1b983eddb61a87.png" alt="img"></p>
+<p>通过这个函数，可以将prioritynum最低位的1的位置打印出来。这个函数比较简单，就是循环遍历0到255，也就是00000000到11111111，让每一个数依次右移最多八位，找到最低位的1。prioritynum右移后，会与1进行与运算，也就是说，除非右移后的数最低位是1，否则都会进行下一轮循环，直到找到最低位的1并且打印；随后程序又会跳出内层循环进行下一个prioritynum的运算。</p>
+<p>运行结果：</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/1c7389df8937e98f6da55459eba988da.png" alt="img"></p>
+<p>通过这个数组，我们可以可以将prioritynum作为数组下标查询最高优先级。这其实就是一种哈希算法的思想，用特定的数字映射特定的优先级。</p>
+<p>这种算法缺点也十分明显，就是数组占用空间太大了，一个int就要4个字节，上面的例子是优先级为8位，如果优先级有32位呢？那么占用空间将会达到：4*2的32次方个字节。</p>
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/9c46cc0c670e763c664c45442a13784e.png" alt="img"></p>
+<p>为了解决这个问题，RTT内核使用了四个表，每个表对应8个位，算法也很简洁，先读最低八位的值，判断是否为0，不为0说明优先级肯定在最低八位中，然后直接查表即可。可能有读者好奇为什么要加上1，其实观察就会发现，这个表的第一个0，是在循环之前手动打印的，否则没有256个数，为了避免与32位全为0冲突，所以加上了1。</p>
+<p>简单来说，笔者手动让数组里的所有数向后移动了一位，那么相应的，把prioritynum作为下标读取表里的数，也要往后面移动一位。</p>
+<p>如果最低八位没有，那就到次八位找，同样先判断是否在次八位中，如果在，那么右移八位然后查表，因为进行了右移操作，所以返回值要在最低八位的返回值的基础加上8。</p>
+<p>剩下两个同理，留给读者自己分析了。</p>
+<p>总的来说，这种基于哈希思想的查表法应用十分广泛，采用空间换时间的策略，具有一定的学习价值，如果某些程序对查询的时间要求比较高，可以尝试用查表策略代替之前的遍历策略。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>笔者介绍了linux内核、FreeRTOS、RT-Thread的调度策略和算法，旨在加深读者对操作系统的理解。当然，本来这些内容应该分成几篇不同的文章细细讲解的，不过笔者还是决定全部放在一篇。</p>
+<p>一方面是考虑到放在同一篇文章里更加全面系统，另一方面是考虑到Sparrow的文章数量如果过多了，比如更成了四五十篇。</p>
+<p>那么笔者相信屏幕前的读者一定没什么兴趣看下去了。所以笔者还是决定追求简洁明了，不更那么多废话。</p>
+<p>Sparrow的教程更到这里，其实已经快接近尾声了。更完调度算法，再更完定时器阻塞延时后，就结束了。</p>
+<p>一步步跟着教程实现Sparrow RTOS的小伙伴们，一路看到这里，不知道是否有所收获?</p>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/RTOS/" rel="tag">RTOS</a></li></ul></div><div class="post-nav"><a class="pre" href="/2024/10/28/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E4%B8%83/">sparrow系列十七</a><a class="next" href="/2024/10/26/%E5%B9%B6%E5%8F%91%E4%B8%8E%E7%AB%9E%E6%80%81/">并发与竞态</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://example.com"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar.png"/></a><p>To be a better man.</p><a class="info-icon" href="https://twitter.com/username" title="Twitter" target="_blank" style="margin-inline:5px"> <i class="fa fa-twitter-square" style="margin-inline:5px"></i></a><a class="info-icon" href="mailto:admin@domain.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/username" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a><a class="info-icon" href="/atom.xml" title="RSS" target="_blank" style="margin-inline:5px"> <i class="fa fa-rss-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/c-flow/" style="font-size: 15px;">c flow</a> <a href="/tags/%E8%99%9A%E5%87%BD%E6%95%B0%E8%A1%A8/" style="font-size: 15px;">虚函数表</a> <a href="/tags/C-language/" style="font-size: 15px;">C language</a> <a href="/tags/linux-kernel/" style="font-size: 15px;">linux kernel</a> <a href="/tags/%E5%86%85%E5%AD%98/" style="font-size: 15px;">内存</a> <a href="/tags/Embedded-RTOS/" style="font-size: 15px;">Embedded RTOS</a> <a href="/tags/c-language/" style="font-size: 15px;">c language</a> <a href="/tags/RTOS/" style="font-size: 15px;">RTOS</a> <a href="/tags/C-lauguage/" style="font-size: 15px;">C lauguage</a> <a href="/tags/compiler/" style="font-size: 15px;">compiler</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2024/10/28/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E5%85%AB/">sparrow系列十八</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/28/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E4%B8%83/">sparrow系列十七</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/27/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E5%85%AD/">sparrow系列十六</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/26/%E5%B9%B6%E5%8F%91%E4%B8%8E%E7%AB%9E%E6%80%81/">并发与竞态</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/26/sparrow%E7%B3%BB%E5%88%97%E4%BA%8C%E5%8D%81/">sparrow系列二十</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/26/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E4%BA%94/">sparrow系列十五</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/25/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E5%9B%9B/">sparrow系列十四</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/23/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E4%B8%89/">sparrow系列十三</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/22/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E4%BA%8C/">sparrow系列十二</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/10/19/sparrow%E7%B3%BB%E5%88%97%E5%8D%81%E4%B8%80/">sparrow系列十一</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.example1.com/" title="site-name1" target="_blank">site-name1</a><ul></ul><a href="http://www.example2.com/" title="site-name2" target="_blank">site-name2</a><ul></ul><a href="http://www.example3.com/" title="site-name3" target="_blank">site-name3</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2024 <a href="/." rel="nofollow">Hexo.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
