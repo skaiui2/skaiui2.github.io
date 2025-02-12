@@ -1,0 +1,71 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>蓝牙服务 | Hexo</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="https://unpkg.com/normalize.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/pure-min.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="https://unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="https://unpkg.com/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="https://unpkg.com/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="https://unpkg.com/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="https://unpkg.com/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 7.3.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">蓝牙服务</h1><a id="logo" href="/.">Hexo</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a><a href="/atom.xml"><i class="fa fa-rss"> 订阅</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">蓝牙服务</h1><div class="post-meta">2025-02-05</div><div class="post-content"><p>skaiuijing</p>
+<h2 id="GATT层"><a href="#GATT层" class="headerlink" title="GATT层"></a>GATT层</h2><p>GATT:属性协议配置规范，用来规范属性中的数据内容，并对属性进行分组，这使得BLE具有强大的兼容性</p>
+<p>在GTTA中定义了两类角色：服务器和客户端。</p>
+<p>GTTA是建立服务的基础层，服务就是BLE中组织数据传输与接收的最小单位。服务配置列表文件称为profile。</p>
+<h3 id="profile"><a href="#profile" class="headerlink" title="profile"></a>profile</h3><h2 id="应用层"><a href="#应用层" class="headerlink" title="应用层"></a>应用层</h2><p>蓝牙任务分为两类：标准蓝牙任务规范profile（公有任务），非标准蓝牙任务规范profile（私有任务）</p>
+<p>公有任务：GATT规范列表发布</p>
+<p>私有任务：用户自定义任务</p>
+<h2 id="程序"><a href="#程序" class="headerlink" title="程序"></a>程序</h2><h4 id="服务初始化"><a href="#服务初始化" class="headerlink" title="服务初始化"></a>服务初始化</h4><p>包含两个部分：队列初始化和服务配置初始化</p>
+<p>队列初始化：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ret_code_t nrf_ble_qwr_init(nrf_ble_qwr_t            * p_qwr,</span><br><span class="line">                            nrf_ble_qwr_init_t const * p_qwr_init)</span><br></pre></td></tr></table></figure>
+
+<p>服务配置初始化：</p>
+<p><strong>添加基础UUID</strong></p>
+<p>通过系统调用sd_ble_uuid_vs_add：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">SVCALL(SD_BLE_UUID_VS_ADD, uint32_t, sd_ble_uuid_vs_add(ble_uuid128_t const *p_vs_uuid, uint8_t *p_uuid_type));</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>添加主服务</strong></p>
+<p>通过系统调用sd_ble_gatts_service_add：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">SVCALL(SD_BLE_GATTS_SERVICE_ADD, uint32_t, sd_ble_gatts_service_add(uint8_t type, ble_uuid_t const *p_uuid, uint16_t *p_handle));</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>添加角色</strong></p>
+<p>通过系统调用sd_ble_gatts_characteristic_add：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">SVCALL(SD_BLE_GATTS_CHARACTERISTIC_ADD, uint32_t, sd_ble_gatts_characteristic_add(uint16_t service_handle, ble_gatts_char_md_t const *p_char_md, ble_gatts_attr_t const *p_attr_char_value, ble_gatts_char_handles_t *p_handles));</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="协议栈事件处理"><a href="#协议栈事件处理" class="headerlink" title="协议栈事件处理"></a>协议栈事件处理</h3><p>主机</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line">Aa((主机))--写数据--&gt;Ab((从机))--从协议栈产生--&gt;Ac(BLE_GATTS_EVT_WRITE事件)</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+
+
+
+
+<h2 id="蓝牙服务建立"><a href="#蓝牙服务建立" class="headerlink" title="蓝牙服务建立"></a>蓝牙服务建立</h2><p>以手机和BLE设备为例：</p>
+<p>1.搜索后发现BLE设备的广播</p>
+<p>2.连接设备</p>
+<p>3.获取其蓝牙地址和提供的服务</p>
+<p>4.使用服务特性，间接调用read,write和notify等接口</p>
+<p>5.断开连接</p>
+<p>但是现在有一个问题，在分布式系统中，如何确保对象的唯一性？</p>
+<p>我们马上会联想到TCP&#x2F;IP协议中的IPv4&#x2F;6机制，但蓝牙协议使用了UUID作为通用唯一识别码。</p>
+<p>但不同于IP协议，BLE在GATT层中规范定义的所有特性都有一个UUID值。</p>
+<p>继续细分：</p>
+<p><strong>基础UUID</strong></p>
+<p>该UUID是用来规范蓝牙技术联盟的，所有联盟都共用该基础UUID</p>
+<p><strong>主服务UUID</strong></p>
+<p>在协议栈中，通常我们会增加一个特定的基础UUID，这就是主服务UUID</p>
+<p><strong>特性UUID</strong></p>
+<p>在主服务的基础上，再自定义不同的UUID用于区分不同特性。</p>
+<h2 id="蓝牙派发"><a href="#蓝牙派发" class="headerlink" title="蓝牙派发"></a>蓝牙派发</h2><p>（callback翻译成回调有够糟糕的，翻译成调用还差不多）</p>
+<h3 id="观察者"><a href="#观察者" class="headerlink" title="观察者"></a>观察者</h3><p>观察者负责处理感兴趣的事件</p>
+<h3 id="FLASH段"><a href="#FLASH段" class="headerlink" title="FLASH段"></a>FLASH段</h3><p>简单来说，其实就是在内存地址上进行分段，每个内存段分别进行命名。</p>
+<p>创建观察者时，就把观察者变量和callback函数放进行这些内存段中。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">section_name在bootloader或者链接脚本里面进行定义，找几块顺眼的数据段进行命名。</span><br><span class="line"></span><br><span class="line">将变量 section_var 放置在名为 my_section 的段中</span><br><span class="line">int section_var __attribute__ ((section(STRINGIFY(section_name)))) __attribute__((used));</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="执行"><a href="#执行" class="headerlink" title="执行"></a>执行</h3><p>其实就是轮询FLASH段内的每个观察者，对比一下是否感兴趣，如果感兴趣，就执行该观察者的callback函数。</p>
+<p>至于优先级，其实就是轮询的先后，根据定义时的优先级设置，把观察者信息放在不同先后的内存位置。</p>
+<h3 id="思考"><a href="#思考" class="headerlink" title="思考"></a>思考</h3><p>笔者来设计的话，想到的方法就是建立一条链表，把观察者变量和callback函数都挂上去，通过链表进行轮询。</p>
+<p>但蓝牙派发则不同，它在先前定义好的内存地址上存放观察者，轮询时顺着地址遍历即可。</p>
+<p>嗯，说实话，这样做真的是非常节约内存。</p>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ble/" rel="tag">ble</a></li></ul></div><div class="post-nav"><a class="pre" href="/2025/02/08/UDP%E5%8D%8F%E8%AE%AE/">UDP协议</a><a class="next" href="/2025/01/19/TCP%E5%8D%8F%E8%AE%AE%E4%B8%80/">TCP协议一</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://example.com"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar.png"/></a><p>To be a better man.</p><a class="info-icon" href="https://twitter.com/username" title="Twitter" target="_blank" style="margin-inline:5px"> <i class="fa fa-twitter-square" style="margin-inline:5px"></i></a><a class="info-icon" href="mailto:admin@domain.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/username" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a><a class="info-icon" href="/atom.xml" title="RSS" target="_blank" style="margin-inline:5px"> <i class="fa fa-rss-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/c-flow/" style="font-size: 15px;">c flow</a> <a href="/tags/%E8%99%9A%E5%87%BD%E6%95%B0%E8%A1%A8/" style="font-size: 15px;">虚函数表</a> <a href="/tags/C-language/" style="font-size: 15px;">C language</a> <a href="/tags/linux-kernel/" style="font-size: 15px;">linux kernel</a> <a href="/tags/%E5%86%85%E5%AD%98/" style="font-size: 15px;">内存</a> <a href="/tags/Embedded-RTOS/" style="font-size: 15px;">Embedded RTOS</a> <a href="/tags/c-language/" style="font-size: 15px;">c language</a> <a href="/tags/RTOS/" style="font-size: 15px;">RTOS</a> <a href="/tags/C-lauguage/" style="font-size: 15px;">C lauguage</a> <a href="/tags/compiler/" style="font-size: 15px;">compiler</a> <a href="/tags/GDB/" style="font-size: 15px;">GDB</a> <a href="/tags/UDP/" style="font-size: 15px;">UDP</a> <a href="/tags/TCP-IP-stack/" style="font-size: 15px;">TCP/IP stack</a> <a href="/tags/compilers/" style="font-size: 15px;">compilers</a> <a href="/tags/ble/" style="font-size: 15px;">ble</a> <a href="/tags/data-struct/" style="font-size: 15px;">data struct</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2025/02/08/UDP%E5%8D%8F%E8%AE%AE/">UDP协议</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/02/05/%E8%93%9D%E7%89%99%E6%9C%8D%E5%8A%A1/">蓝牙服务</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/19/TCP%E5%8D%8F%E8%AE%AE%E4%B8%80/">TCP协议一</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/13/SparrowRTOS%E9%93%BE%E8%A1%A8%E7%89%88%E6%9C%AC/">SparrowRTOS链表版本</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/02/%E7%BA%A2%E9%BB%91%E6%A0%91%E5%AE%9E%E7%8E%B0/">红黑树实现</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/23/%E7%A8%8B%E5%BA%8F%E4%BC%98%E5%8C%96%E4%B9%8B%E6%95%B0%E6%8D%AE%E7%AF%87/">程序优化之数据篇</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/21/%E9%BE%99%E4%B9%A6%E9%99%84%E5%BD%95B%E6%B1%82%E8%A7%A3/">龙书附录B求解</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/17/SparrowRTOS%E7%A7%BB%E6%A4%8D/">SparrowRTOS移植</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/11/C4%E6%BA%90%E7%A0%81%E6%AC%A3%E8%B5%8F/">C4编译器源码解析</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/10/GdbPythonAPI/">GdbPythonAPI</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.example1.com/" title="site-name1" target="_blank">site-name1</a><ul></ul><a href="http://www.example2.com/" title="site-name2" target="_blank">site-name2</a><ul></ul><a href="http://www.example3.com/" title="site-name3" target="_blank">site-name3</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2025 <a href="/." rel="nofollow">Hexo.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>

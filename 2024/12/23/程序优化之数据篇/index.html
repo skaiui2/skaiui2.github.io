@@ -1,0 +1,409 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>程序优化之数据篇 | Hexo</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="https://unpkg.com/normalize.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/pure-min.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="https://unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="https://unpkg.com/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="https://unpkg.com/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="https://unpkg.com/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="https://unpkg.com/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 7.3.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">程序优化之数据篇</h1><a id="logo" href="/.">Hexo</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a><a href="/atom.xml"><i class="fa fa-rss"> 订阅</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">程序优化之数据篇</h1><div class="post-meta">2024-12-23</div><div class="post-content"><p>skaiuijing</p>
+<h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>我们往往都希望优化我们的程序，使之达到一个更好的效果，程序优化的一个重点就是速度，加快速度的一个好办法就是使用并行技术，但是，并行时我们要考虑必须串行执行的任务，也就是有依赖关系的任务，任务中的重点往往是具体的数据，这些任务中的数据通常具有局部性和关联性。</p>
+<p>而数据中数组具有代表性，现在，让笔者从数组开始，谈谈程序数据的优化。</p>
+<h2 id="从数据的存储内存开始"><a href="#从数据的存储内存开始" class="headerlink" title="从数据的存储内存开始"></a>从数据的存储内存开始</h2><p>我们都知道计算机的基本内存结构如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line">Aa(处理器)--&gt;Ab(cache高速缓存)--&gt;Ac(多层cache)--&gt;Ad(总线)--&gt;Ae(内存)</span><br></pre></td></tr></table></figure>
+
+<p>而内存的结构又可以继续划分：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line">Aa(虚拟内存-磁盘)--速度从慢到快--&gt;Ab(物理内存)--&gt;Ac(二级cache)--&gt;Ad(一级cache)--&gt;Ae(寄存器)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>虚拟内存是一个很伟大的发明，它借助内存管理单元（MMU），并利用分页机制将磁盘的一部分模拟为内存使用。它允许计算机使用硬盘空间来扩展实际的物理内存。这使得操作系统能够运行超过实际物理内存容量的程序。</p>
+<p>而我们重点关注的地方在cache这里。</p>
+<h3 id="cache命中率"><a href="#cache命中率" class="headerlink" title="cache命中率"></a>cache命中率</h3><p>cache会从更低一级的内存结构中搬数据，如果数据访问是局部性很强（如访问同一数据块多次），则缓存命中率会较高，如果不命中，那么计算机会跑到下一级内存中寻找数据，这样程序运行效率就会非常低。</p>
+<h2 id="对循环迭代的优化"><a href="#对循环迭代的优化" class="headerlink" title="对循环迭代的优化"></a>对循环迭代的优化</h2><p>得知了这一点后，我们可以考虑改善我们的程序写法了，以数组操作为例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">for(int i = 0; i&lt;= 2; i++)&#123;</span><br><span class="line">	for(int j = i; j&lt;= 2; j++)</span><br><span class="line">	Z[j][i] = 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在C语言中，二维数组的内存分布通常是按行优先（Row-major order）存储的，这意味着数组的行是连续存储在内存中的。具体来说，对于一个二维数组 <code>Z</code>，其内存布局是按以下方式排列的：</p>
+<h4 id="二维数组的内存分布"><a href="#二维数组的内存分布" class="headerlink" title="二维数组的内存分布"></a>二维数组的内存分布</h4><p>假设我们有一个二维数组 <code>Z</code>，其大小为 <code>m</code> 行 <code>n</code> 列。数组元素在内存中的排列顺序如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Z[0][0], Z[0][1], ..., Z[0][n-1], Z[1][0], Z[1][1], ..., Z[1][n-1], ..., Z[m-1][0], ..., Z[m-1][n-1]</span><br></pre></td></tr></table></figure>
+
+<p>每一行的元素是连续存储的，然后依次存储下一行的元素。</p>
+<p>那么，优化后的遍历方法如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for (int j = 0; j &lt;= 2; j++) &#123;</span><br><span class="line">    for (int i = 0; i &lt;= j; i++) &#123;</span><br><span class="line">        Z[j][i] = 0;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上面的优化方法相信大家都能琢磨出来，但是，如果稍微改一下呢？</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">for(int i = 0; i&lt;= 5; i++)&#123;</span><br><span class="line">	for(int j = i; j&lt;= 7; j++)</span><br><span class="line">	Z[j][i] = 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>按照原程序的遍历：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐</span><br><span class="line">│ 0,0 │ 1,0 │ 2,0 │ 3,0 │ 4,0 │ 5,0 │ 6,0 │ 7,0 │</span><br><span class="line">│     │ 1,1 │ 2,1 │ 3,1 │ 4,1 │ 5,1 │ 6,1 │ 7,1 │</span><br><span class="line">│     │     │ 2,2 │ 3,2 │ 4,2 │ 5,2 │ 6,2 │ 7,2 │</span><br><span class="line">│     │     │     │ 3,3 │ 4,3 │ 5,3 │ 6,3 │ 7,3 │</span><br><span class="line">│     │     │     │     │ 4,4 │ 5,4 │ 6,4 │ 7,4 │</span><br><span class="line">│     │     │     │     │     │ 5,5 │ 6,5 │ 7,5 │</span><br><span class="line">│     │     │     │     │     │     │ 6,6 │ 7,6 │</span><br><span class="line">│     │     │     │     │     │     │     │ 7,7 │</span><br><span class="line">└─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<p>更好的遍历方法：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">┌─────┬─────┬─────┬─────┬─────┬─────</span><br><span class="line">│ 0,0 │ 										</span><br><span class="line">│ 1,0 │ 1,1 │  									</span><br><span class="line">│ 2,0 │ 2,1 │ 2,2 │  </span><br><span class="line">│ 3,0 │ 3,1 │ 3,2 │ 3,3 │ </span><br><span class="line">│ 4,0 │ 4,1 │ 4,2 │ 4,3 │ 4,4 │ </span><br><span class="line">│ 5,0 │ 5,1 │ 5,2 │ 5,3 │ 5,4 │ 5,5 </span><br><span class="line">| 6,0 | 6,1 | 6,2 | 6,3 | 6,4 | 6,5 </span><br><span class="line">| 7,0 | 7,1 | 7,2 | 7,3 | 7,4 | 7,5 </span><br><span class="line">└─────┴─────┴─────┴─────┴─────┴─────</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<p>局部性更好的程序如下，此时想要一眼看出来这样写就有点困难了，那我们要怎么推导数组的遍历式呢：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">for (int j = 0; j &lt;= 7; j++) &#123;</span><br><span class="line">    for (int i = 0; i &lt;= (j &lt; 5 ? j : 5); i++) &#123;</span><br><span class="line">        Z[j][i] = 0;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="引入线性代数"><a href="#引入线性代数" class="headerlink" title="引入线性代数"></a>引入线性代数</h2><p>我们先看看各种值的范围：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">i的范围: i&gt;=0, i&lt;=5</span><br><span class="line">j的范围: j&gt;=i, j&lt;=7</span><br></pre></td></tr></table></figure>
+
+<p>尝试把它们写成线性方程：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">1*i + 0*j + 0 &gt;= 0</span><br><span class="line">-1*i + 0*j + 5 &gt;= 0</span><br><span class="line"></span><br><span class="line">-1*i + j + 0 &gt;= 0</span><br><span class="line">0*i + -1*j + 7 &gt;= 0</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>矩阵如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">|  1  0 |   | i |   &gt;=   | 0 |</span><br><span class="line">| -1  0 | * | j |   &gt;=   | -5 |</span><br><span class="line">| -1  1 |           &gt;=   | 0 |</span><br><span class="line">|  0 -1 |           &gt;=   | -7 |</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>现在我们得到了矩阵，我们可以进一步得到多面体，先回顾一下矩阵与多面体的关系：</p>
+<h3 id="线性约束表示多面体"><a href="#线性约束表示多面体" class="headerlink" title="线性约束表示多面体"></a>线性约束表示多面体</h3><p>多面体可以通过一组线性不等式来定义，这些不等式可以表示为矩阵和向量的形式。例如，对于一个包含 n个变量的多面体，可以用一个 m×n 的矩阵A和一个m维的向量 b来表示：</p>
+<p>  Ax &lt;&#x3D; b</p>
+<p>其中，x是变量向量，约束条件定义了多面体的边界。</p>
+<h3 id="顶点表示"><a href="#顶点表示" class="headerlink" title="顶点表示"></a>顶点表示</h3><p>多面体的顶点可以通过求解线性方程组（通常涉及矩阵的逆或者伪逆）来获得。这些顶点是满足约束条件的解。</p>
+<h3 id="矩阵操作多面体"><a href="#矩阵操作多面体" class="headerlink" title="矩阵操作多面体"></a>矩阵操作多面体</h3><h3 id="线性变换"><a href="#线性变换" class="headerlink" title="线性变换"></a>线性变换</h3><p>通过矩阵乘法，可以对多面体进行线性变换（如旋转、缩放、平移等）。例如，如果矩阵M描述了一个线性变换，那么多面体中的每一个点 x在变换后的新位置可以表示为Mx。</p>
+<h4 id="仿射变换"><a href="#仿射变换" class="headerlink" title="仿射变换"></a>仿射变换</h4><p>仿射变换是线性变换的推广，包括线性变换和平移。可以用如下形式表示：</p>
+<p>y&#x3D;Mx+t</p>
+<p>其中，MM 是线性变换矩阵，t是平移向量。</p>
+<p>好吧，其实矩阵和多面体与接下来要讲的算法也没多大关系，笔者只是想说明如何从不等式推导到线性代数并扩展到多面体和高维空间体的。</p>
+<h2 id="使用Fourier-Motzkin算法"><a href="#使用Fourier-Motzkin算法" class="headerlink" title="使用Fourier-Motzkin算法"></a>使用Fourier-Motzkin算法</h2><p>Fourier-Motzkin算法是一种经常在多面体中用于求解线性不等式系统的消去算法，概括如下：</p>
+<p><strong>选择消去变量</strong>： 选择一个变量 xi作为消去变量。</p>
+<p><strong>分类不等式</strong>： 将所有不等式分为三类：</p>
+<ul>
+<li>包含 Xi的不等式，且 Xi的系数为正。</li>
+<li>包含 Xi的不等式，且 Xi的系数为负。</li>
+<li>不包含 Xi的不等式。</li>
+</ul>
+<p><strong>生成新不等式</strong>： 通过将第一类不等式和第二类不等式配对，消去 Xi</p>
+<p><strong>组合不等式</strong>： 将生成的新不等式与不包含 xi的不等式组合，得到一个新的线性不等式系统。</p>
+<p><strong>重复步骤</strong>： 对新的线性不等式系统重复上述步骤，直到所有变量都被消去。</p>
+<p>应用该算法，我们重新得到范围：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0&lt;=j, 0 &lt;=5</span><br><span class="line">j&lt;=7</span><br></pre></td></tr></table></figure>
+
+<p>那么i和j的范围如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">L(i):0</span><br><span class="line">U(i):5,j</span><br><span class="line"></span><br><span class="line">L(j):0</span><br><span class="line">U(J):7</span><br></pre></td></tr></table></figure>
+
+<p>有了这个范围，我们可以得到：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for (int j = 0; j &lt;= 7; j++) &#123;</span><br><span class="line">    for (int i = 0; i &lt;= min(5,j); i++) &#123;</span><br><span class="line">        Z[j][i] = 0;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>也就是：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for (int j = 0; j &lt;= 7; j++) &#123;</span><br><span class="line">    for (int i = 0; i &lt;= (j &lt; 5 ? j : 5); i++) &#123;</span><br><span class="line">        Z[j][i] = 0;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="按斜线遍历"><a href="#按斜线遍历" class="headerlink" title="按斜线遍历"></a>按斜线遍历</h3><p>现在我们更改了遍历的方式，改成了按行遍历，但是，如果我们想改成按斜线遍历呢？以第一行为例：从[0,0]一直到[5,5]</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">┌─────┬─────┬─────┬─────┬─────┬─────</span><br><span class="line">│ 0,0 │ 										</span><br><span class="line">│ 1,0 │ 1,1 │  									</span><br><span class="line">│ 2,0 │ 2,1 │ 2,2 │  </span><br><span class="line">│ 3,0 │ 3,1 │ 3,2 │ 3,3 │ </span><br><span class="line">│ 4,0 │ 4,1 │ 4,2 │ 4,3 │ 4,4 │ </span><br><span class="line">│ 5,0 │ 5,1 │ 5,2 │ 5,3 │ 5,4 │ 5,5 </span><br><span class="line">| 6,0 | 6,1 | 6,2 | 6,3 | 6,4 | 6,5 </span><br><span class="line">| 7,0 | 7,1 | 7,2 | 7,3 | 7,4 | 7,5 </span><br><span class="line">└─────┴─────┴─────┴─────┴─────┴─────</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="坐标轴变换"><a href="#坐标轴变换" class="headerlink" title="坐标轴变换"></a>坐标轴变换</h3><p>通过观察归纳，我们会发现如果按照斜线遍历，那么i-k的值在每一次遍历都会是一个常量，而且常量的值是从0到7，因此：</p>
+<p>令k&#x3D;j-i，那么原不等式改写为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0&lt;= j-k &lt;= 5</span><br><span class="line">j-k &lt;= j &lt;= 7</span><br></pre></td></tr></table></figure>
+
+<p>重新应用Fourier-Motzkin算法：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">L(i):0</span><br><span class="line">U(i):5+k,j</span><br><span class="line"></span><br><span class="line">L(k):0</span><br><span class="line">U(k):7</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>因此我们得到程序：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">for(int k=0; k&lt;=7; K++)&#123;</span><br><span class="line">	for(int j=k; j&lt;= min(5+k, 7); j++)&#123;</span><br><span class="line">		Z[j,j-k] = 0;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>也就是：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">for (int k = 0; k &lt;= 7; k++) &#123;</span><br><span class="line">    for (int j = k; j &lt;= ((5 + k) &lt; 7 ? (5 + k) : 7); j++) &#123;</span><br><span class="line">        Z[j][j - k] = 0;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<p>在前文笔者简单介绍了把数据迭代抽象为线性代数，并介绍了空间体、维度等概念。</p>
+<h2 id="数据复用"><a href="#数据复用" class="headerlink" title="数据复用"></a>数据复用</h2><p>数据复用是一种提高程序执行效率与数据局部性的方法，分为自复用与组复用，</p>
+<p><strong>静态访问</strong>：访问指令本身的访问，如j&#x3D;1,Z[j]等价于Z[1]访问，该访问是静态的，因为j的值是固定的。</p>
+<p><strong>动态访问</strong>：该语句的多次迭代访问，如j从0到10，那么迭代中Z[j]的访问就是动态访问。</p>
+<p><strong>自复用</strong>：如果多个迭代访问同一个内存位置，那么称为自复用。</p>
+<p><strong>组复用</strong>：如果多个迭代访问不同的内存位置，但这些位置存储的是相关的数据，那么称为组复用。</p>
+<p><strong>时间复用</strong>：一个复用指向相同的位置。</p>
+<p><strong>空间复用</strong>：指向同一个高速缓存线。</p>
+<p>举个例子：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">自复用：Z[1][1]，每次迭代都访问 Z[1][1] 这个内存位置的数据，这样的访问经常被使用，因为这块内存的数据可能被改变。</span><br><span class="line"></span><br><span class="line">组复用：Z[1][2], Z[1][3]，每次迭代访问不同的内存位置（如 Z[1][2] 和 Z[1][3]），每次通过不同的指令进行访问，但这些位置的数据之间有相关性。</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h3 id="循环中的重复访问"><a href="#循环中的重复访问" class="headerlink" title="循环中的重复访问"></a>循环中的重复访问</h3><p>数据复用，就是循环中的重复访问数据，对于数组的遍历，假设每个元素之间都没有依赖关系，那么我们可以直接全部并行执行，在并行的基础上，我们会优先执行具有局部性的数据，因为cache中的数据往往都具有局部性，如果去执行与前面的数据局部性差的数据，很可能这些数据在下一级内存中，这样会浪费CPU时间。</p>
+<p>为了优化局部性，我们希望识别访问相同数据或相同cache线的遍历（迭代）。</p>
+<h2 id="矩阵的秩与自复用"><a href="#矩阵的秩与自复用" class="headerlink" title="矩阵的秩与自复用"></a>矩阵的秩与自复用</h2><p>矩阵的秩是线性无关行（或列）的数目，在上文笔者简单介绍了如何将迭代与矩阵等价。</p>
+<p>矩阵的秩就是访问数据的维度。</p>
+<h3 id="什么时候会发生自复用？"><a href="#什么时候会发生自复用？" class="headerlink" title="什么时候会发生自复用？"></a>什么时候会发生自复用？</h3><p>自复用是对自身数据的复用，首先，我们知道每个数据都会被使用（如果不使用那就根本没有存放这个数据的必要），那么，发生自复用时，肯定是循环进行了多余的遍历，也就是：</p>
+<p>遍历次数 &gt; 数据个数时，会发生自复用。</p>
+<p>假设数据有K个维度，即一维数组、二维数组啥的。再假设循环有d个深度，即i、j、k、l等不同的迭代变量对应每一个深度。</p>
+<p>复用最高可以发生：n^(d-k)次。</p>
+<p>举例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">数据是一维的：Z[i]</span><br><span class="line">循环使用两个变量的：</span><br><span class="line">for(i = 10; i &gt; 0; i--)&#123;</span><br><span class="line">	for(j = 0; j &lt; 6; j++)&#123;</span><br><span class="line">		Z[i+j]=0;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>看看上面的循环变量，一个自减，一个自增，其实访问的数组元素都是相同的，也就是发生了自复用。</p>
+<p>进行优化：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">直接优化为执行16次Z[10]=0即可，这样直接省去了一个变量：</span><br><span class="line">while(16--)&#123;</span><br><span class="line">	Z[10] = 0</span><br><span class="line">&#125;</span><br><span class="line">在某些特殊场所：例如操作寄存器，这样的语句是有意义的，但是，大部分情况下，可以优化为：</span><br><span class="line">直接Z[10]=0</span><br></pre></td></tr></table></figure>
+
+<p>通过上面的优化我们发现，循环深度是2，也就是使用两个变量，但是我们观察发现其实第二个迭代深度其实是多余的，也就是说发生了自复用。</p>
+<p>现在该讲一讲矩阵的秩了。</p>
+<p>先考虑下列数组访问：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Z[i][j]</span><br><span class="line">Z[j][j+1]</span><br><span class="line">Z[1,i,2*i+j]</span><br></pre></td></tr></table></figure>
+
+<p>转换成矩阵如下：</p>
+<p>第一个：<br>$$<br>\begin{pmatrix}<br>1 &amp; 0  \<br>0 &amp; 1<br>\end{pmatrix}<br>$$<br>第二个：</p>
+<p>$$<br>\begin{pmatrix}<br>0&amp;1\<br>0&amp;1</p>
+<p>\end{pmatrix}<br>$$<br>第三个：<br>$$<br>\begin{pmatrix}<br>0 &amp; 1 \<br>1 &amp; 0 \<br>2 &amp; 1<br>\end{pmatrix}<br>$$</p>
+<p>对于第二个，我们会发现它们的秩小于行的个数，也就是说，发生了自复用，现在我们要把这层关系表示出来。</p>
+<h2 id="秩的实际意义"><a href="#秩的实际意义" class="headerlink" title="秩的实际意义"></a>秩的实际意义</h2><p>强调一下，一维数组和二维数组是C语言的语法，笔者所说的一维和二维是指空间体，如果不同变量相互独立，那么就分别作为一个维度，如果不独立，则合并为一个维度。</p>
+<p>对于第二个矩阵，它是二维数组，但是它的空间维度只有一维，对应的矩阵的秩是一。</p>
+<p>对于该二维数组所有元素的遍历，只用一个变量j进行。</p>
+<p><strong>矩阵的秩的实际意义就是数据的空间维度。</strong></p>
+<h3 id="思考秩与并行"><a href="#思考秩与并行" class="headerlink" title="思考秩与并行"></a>思考秩与并行</h3><p>我们现在做的一切都是为了并行而铺垫，对于独立的维度，我们完全可以使用不同的并行进行运算，对于相同的秩的多维数组，就要把这些交给同一个处理器进行运算。</p>
+<p>那么在数组的迭代过程中，如果进行了重复的维度迭代，那么转化为矩阵，也就是多了线性相关行（或列）的数目，而矩阵的秩其实并没有改变。</p>
+<p>那么，我们需要找出重复的迭代，并将这些迭代进行密集处理，这样能获得更好的局部性。</p>
+<h3 id="找出重复迭代"><a href="#找出重复迭代" class="headerlink" title="找出重复迭代"></a>找出重复迭代</h3><p>在前文笔者写过不等式表示出来的矩阵：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">|  1  0 |   | i |   &gt;=   | 0 |</span><br><span class="line">| -1  0 | * | j |   &gt;=   | -5 |</span><br><span class="line">| -1  1 |           &gt;=   | 0 |</span><br><span class="line">|  0 -1 |           &gt;=   | -7 |</span><br></pre></td></tr></table></figure>
+
+<p>上面的矩阵来自不等式，也就是外层的嵌套循环范围，现在我们要从数组本身抽象出代数关系。</p>
+<h2 id="对数组访问的优化"><a href="#对数组访问的优化" class="headerlink" title="对数组访问的优化"></a>对数组访问的优化</h2><h2 id="引入线性代数-1"><a href="#引入线性代数-1" class="headerlink" title="引入线性代数"></a>引入线性代数</h2><p>对于数组Z[i - 1]，我们可以使用矩阵表示为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">数组Z[i - 1]b表示为矩阵：    [1 0] [i  </span><br><span class="line">								 j] + [-1]</span><br></pre></td></tr></table></figure>
+
+<p>把数组的迭代写成矩阵，如果迭代等价，那么访问的元素也是一样的。</p>
+<p>我们可以把矩阵写成这样：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Fi + f </span><br></pre></td></tr></table></figure>
+
+<p>这样写，就是一次迭代的访问，同理，再写一次迭代：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Fl + f </span><br></pre></td></tr></table></figure>
+
+<p>那么，我们可以知道，重复的迭代，就是：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Fi + f = Fl + f</span><br><span class="line">也就是：F(i - l) = 0</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>这样做，我们就成功把迭代等价问题转为了数学问题。</p>
+<h3 id="F-i-l-0求解"><a href="#F-i-l-0求解" class="headerlink" title="F(i - l) &#x3D; 0求解"></a>F(i - l) &#x3D; 0求解</h3><p>现在我们已经知道了，满足F(i - l) &#x3D; 0的两次迭代等价，其中一个对矩阵的秩没有影响，它是多余的，现在，我们的问题是这个等式的求解。</p>
+<h4 id="向量与空间体"><a href="#向量与空间体" class="headerlink" title="向量与空间体"></a>向量与空间体</h4><p>我们先思考一下，i和l都是向量，那么假设它们的差值为向量v，那么问题就是：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Fv = 0</span><br></pre></td></tr></table></figure>
+
+<p>F是一个矩阵，而且是确定值，它由不等式给出，那么抽象到空间中，它可以表示为一个空间体，</p>
+<p>假设这个空间体是平面，那么V，一定就是垂直于这个平面的向量，根据向量的性质我们可以知道它们的相乘结果是0。</p>
+<p>现在我们对空间抽象有一些理解了，那么拓展到更高维度，不管F是一个怎样的空间体，v向量空间都会使它们的结果为0，那么把V称之为<strong>零空间</strong>，我们的目的就是求解出这个零空间，这样我们就会知道那些迭代是等价的。</p>
+<p>到这一步就不用再细究了，直接使用matlab或者python进行求解是一个非常不错的选择。</p>
+<h3 id="向量解与迭代"><a href="#向量解与迭代" class="headerlink" title="向量解与迭代"></a>向量解与迭代</h3><p>假设我们使用matlab等工具求解出v的值为：(这个值是笔者随便乱敲的)</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[1</span><br><span class="line"> 1]</span><br></pre></td></tr></table></figure>
+
+<p>我们迭代使用的遍历有i和j，那么也就是说：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">[i1   - [i2</span><br><span class="line"> j1]  -  j2]  = [1</span><br><span class="line"> 				 1]</span><br></pre></td></tr></table></figure>
+
+
+
+<p>也就是说，在我们迭代遍历数组并使用i和j作为迭代量时，如果这一次的迭代与之后的一次迭代，它们的差值刚好满足向量v的结果，那么它们就是重复迭代。</p>
+<h2 id="自空间复用"><a href="#自空间复用" class="headerlink" title="自空间复用"></a>自空间复用</h2><p>当遍历的元素恰好在一条cache线上时，称之为自空间复用，在前面我们已经知道了矩阵的秩就是数据的空间维度，也就是相对独立变量的个数。</p>
+<p>当矩阵的秩小于循环嵌套深度时，此时一定是可以进行优化的。</p>
+<p>例如：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">for(i=0; i&lt;100; i++)&#123;</span><br><span class="line">	for(j=0; j&lt;100; j++)&#123;</span><br><span class="line">		for(k=0; k&lt;100; k++)&#123;</span><br><span class="line">			Z[i+j+k] = 0;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>对于这个例子，矩阵的秩为：<br>$$<br>\begin{pmatrix}<br>1&amp;1&amp;1<br>\end{pmatrix}<br>$$</p>
+<p>观察程序我们也可以发现，只需要一个变量其实就可以完成遍历。</p>
+<h3 id="矩阵的秩"><a href="#矩阵的秩" class="headerlink" title="矩阵的秩"></a>矩阵的秩</h3><p>因此，<strong>我们再一次强调矩阵的秩的含义：它代表了数据遍历所需要的空间维度</strong>。数据本身就有维度，以数组为例，有一维数组、二维数组、三维数组等等，对于不同维度的数组，我们需要不同个数的独立变量才可以遍历全部元素，一维需要一个变量、二维需要两个、、以此类推。</p>
+<p>我们假设每个独立变量只在不同的一层循环中出现，且变量作用维度不同，那么此时矩阵的秩刚好等于循环嵌套深度，也就是独立变量的个数。</p>
+<p>发现自空间复用的技巧是不考虑矩阵的最后一行，对于假设情况，此时截断后的矩阵的秩小于循环嵌套深度，又因为数据的空间维度相对独立，因此截断的维度会线性改变数组的下标，也就是说，它迭代时，元素处于同一条cache线上，此时自空间复用是可行的。</p>
+<p>看过了假设的例子，先明确一个结论：矩阵的秩不可能大于循环嵌套深度，而是等于或小于循环嵌套深度。</p>
+<p>例如：数据是二维的，但是对于需要遍历的数据，它们的分布其实是线性的，所以矩阵的秩是一，最终会等于循环嵌套深度</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">for(i=0; i&lt;50; i++)&#123;</span><br><span class="line">	Z[i][i+1]=0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>原因很简单，矩阵的秩代表了数据遍历时的空间维度，循环嵌套深度是具体的迭代产生者，如果秩大于循环嵌套深度，那么就意味着有些维度是无法被迭代到的，这种程序不可能出现！</p>
+<p>例如：j代表了另外一个维度的遍历，但是此时循环迭代程序必须更新，这种程序不可能出现！</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">for(i=0; i&lt;10; i++)&#123;</span><br><span class="line">	Z[i][j]=0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>不过矩阵的秩是可以小于循环嵌套深度的，</p>
+<p>例如：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for(i=0; i&lt;10;i++)&#123;</span><br><span class="line">	for(j=0; j&lt;10; j++)&#123;</span><br><span class="line">		Z[i+j]=0;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这个矩阵的秩为1，循环嵌套深度为2，但是j变量是多余的，本质上它遍历的元素还是在一条cache线上，也就是同一个维度。</p>
+<p>也就是说，如果矩阵的秩一开始就小于循环嵌套深度，那么一定可以发生自空间复用。</p>
+<h2 id="发现自空间复用"><a href="#发现自空间复用" class="headerlink" title="发现自空间复用"></a>发现自空间复用</h2><p>发现自空间复用的技巧是不考虑矩阵的最后一行，从上面我们可以得出，正常情况下，矩阵的秩小于或等于循环嵌套的深度。</p>
+<p>当矩阵的秩小于循环嵌套的深度时，截断后的矩阵仍然满足矩阵的秩小于循环嵌套深度的关系，此时一定可以发生自空间复用。</p>
+<p>当矩阵的秩等于循环嵌套深度时，截断后的矩阵也满足矩阵的秩小于循环嵌套深度的关系，此时也一定可以发生自空间复用。</p>
+<p>考虑数组访问如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Z[1][i][2*i+j]</span><br></pre></td></tr></table></figure>
+
+<p>删除最后一行，得到矩阵如下：<br>$$<br>\begin{pmatrix}<br>0&amp;0\<br>1&amp;0<br>\end{pmatrix}<br>$$<br>这个矩阵的秩为1，但是循环嵌套的深度为2，所以可以进行自空间复用。</p>
+<p>我们观察最后一行下标，事实也确实如此，因为遍历时，j是线性增长的，2i不属于该循环，所以[2*i+j]也是线性增长的，也就是说，它的迭代是在同一条cache线上。</p>
+<h3 id="对程序设计的要求"><a href="#对程序设计的要求" class="headerlink" title="对程序设计的要求"></a>对程序设计的要求</h3><p>不考虑矩阵的最后一行，其实就是在找出独立的、线性改变数组访问的迭代，其实这对于程序设计有一个要求，那就是所有的数组下标都要与循环嵌套一一对应。</p>
+<p>再考虑数组访问如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Z[2*i+j][i][1]</span><br></pre></td></tr></table></figure>
+
+<p>此时截断后的矩阵的秩为2，循环嵌套深度也为2，此时该技巧就不成立了。</p>
+<h2 id="对应线性代数的意义"><a href="#对应线性代数的意义" class="headerlink" title="对应线性代数的意义"></a>对应线性代数的意义</h2><p>假设程序设计合理，程序的每一列都对应不同的迭代变量，为了确保存在空间复用，我们必须要确保被我们截断后的变量的基本向量[0,,,,1]位于截断矩阵的零空间中。</p>
+<p>例如：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">对于Z[1][i][2*i+j]，迭代变量j的零向量是[0,1],刚好位于截断后的矩阵的零空间中</span><br></pre></td></tr></table></figure>
+
+<p>这是因为当该向量在截断矩阵的零空间中时，我们可以把除了最内层下标之外的所有下标都固定下来，确保最后一层迭代是线性变换的，这样就可以确保它对数组元素的访问是处于同一条cache线。</p>
+<h3 id="缺陷"><a href="#缺陷" class="headerlink" title="缺陷"></a>缺陷</h3><p>考虑如下访问：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Z[1][i][2*i+50*j]</span><br></pre></td></tr></table></figure>
+
+<p>我们同样使用上面的方法截断矩阵，结果确实满足矩阵秩的要求，那么我们可以把这些元素都保存在cache中吗？</p>
+<p>在这种情况下，访问确实是线性的，但是却跨越了50个元素，除非该cache线能保存元素的个数远远超过50个，否则该自空间复用的收益非常低，甚至是无法被自空间复用。</p>
+<h2 id="组复用"><a href="#组复用" class="headerlink" title="组复用"></a>组复用</h2><p><strong>组复用</strong>：如果多个迭代访问不同的内存位置，但这些位置存储的是相关的数据，那么称为组复用。</p>
+<p>在前面笔者介绍过组复用，其实就是：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Fi + f1 = Fl + f2</span><br><span class="line">可化为：</span><br><span class="line">F(i-l)=f2-f1</span><br><span class="line">设i-l为v，即Fv = f2-f1</span><br></pre></td></tr></table></figure>
+
+<p>举例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">访问：</span><br><span class="line">A[i][j][i+k]</span><br><span class="line">访问：</span><br><span class="line">A[i+1][j-1][i+j]</span><br></pre></td></tr></table></figure>
+
+<h1 id="组复用求解：-begin-pmatrix-1-0-0-0-1-0-1-1-0-end-pmatrix-begin-pmatrix-i1-j1-k1-end-pmatrix-begin-pmatrix-0-0-0-end-pmatrix"><a href="#组复用求解：-begin-pmatrix-1-0-0-0-1-0-1-1-0-end-pmatrix-begin-pmatrix-i1-j1-k1-end-pmatrix-begin-pmatrix-0-0-0-end-pmatrix" class="headerlink" title="组复用求解：$$\begin{pmatrix}1&amp;0&amp;0\0&amp;1&amp;0\1&amp;1&amp;0\end{pmatrix}*\begin{pmatrix}i1\j1\k1\end{pmatrix}+\begin{pmatrix}0\0\0\end{pmatrix}"></a>组复用求解：<br>$$<br>\begin{pmatrix}<br>1&amp;0&amp;0\<br>0&amp;1&amp;0\<br>1&amp;1&amp;0<br>\end{pmatrix}<br>*<br>\begin{pmatrix}<br>i1\<br>j1\<br>k1<br>\end{pmatrix}<br>+<br>\begin{pmatrix}<br>0\<br>0\<br>0<br>\end{pmatrix}</h1><p>\begin{pmatrix}<br>1&amp;0&amp;0\<br>0&amp;1&amp;0\<br>1&amp;1&amp;0<br>\end{pmatrix}<br>*<br>\begin{pmatrix}<br>i2\<br>j2\<br>k2<br>\end{pmatrix}<br>+<br>\begin{pmatrix}<br>1 \<br>-1\<br>0<br>\end{pmatrix}<br>$$<br>向量v有等式如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[i1-i2,j1-j2,k1-k2] = [1,-1,0]</span><br></pre></td></tr></table></figure>
+
+<p>也就是说，只要两组不同的访问满足该关系，那么它们就可以被组复用。</p>
+<h3 id="发现组空间复用"><a href="#发现组空间复用" class="headerlink" title="发现组空间复用"></a>发现组空间复用</h3><p>发现组空间复用的技巧与发现自空间复用的技巧是一样的，都是截断最后一行，再观察矩阵的秩。</p>
+<p>其实我们观察一下第一次访问的矩阵，也可以得出该结论：<br>$$<br>\begin{pmatrix}1&amp;0&amp;0\0&amp;1&amp;0\1&amp;1&amp;0\end{pmatrix}<br>$$</p>
+<p>该矩阵的零空间是：<br>$$<br>\begin{pmatrix}0&amp;0&amp;1\end{pmatrix}<br>$$<br>而k对应组复用的约束是：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">k1-k2 = 0</span><br></pre></td></tr></table></figure>
+
+<p>也就是说，k的值是任意值时，都可以发生组复用，因为不管k是什么值，该矩阵的零空间都是该向量的基本单位。</p>
+<p>当我们截断最后一行时，如果矩阵的秩小于循环嵌套深度，此时也可以发生组复用，因为这说明最后一行代表的变量是独立的，当前面的值固定下来，独立变量可以自由变化，当然，因为它是一个独立变量，所以变化一定是线性的，也就是沿着cache线的，数据之间具有良好的局部性。</p>
+<h2 id="依赖关系与并行化"><a href="#依赖关系与并行化" class="headerlink" title="依赖关系与并行化"></a>依赖关系与并行化</h2><p>我们需要把有依赖关系的数据都交给同一个CPU处理，这样其他数据都可以交给其他CPU并行处理，并行的加速比公式Amdahl定律：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">1/( (1 - f) + (f / p)  )</span><br></pre></td></tr></table></figure>
+
+<p>笔者个人认为，这个公式的主要精髓在于并行流受限于串行流，加速比其实主要取决于并行化最低的数据，也就是依赖性最严重的数据，这部分数据必须串行执行。</p>
+<h2 id="指令层面的并行"><a href="#指令层面的并行" class="headerlink" title="指令层面的并行"></a>指令层面的并行</h2><p>让我们理解一下CPU指令的并行。</p>
+<p>程序可以看作流，任何程序执行的过程都可以看成是流动的过程。基于这个思想，我们可以将程序划分为数据流与控制流，又一步划分，具体的数据流可以看出串行流与并行流。</p>
+<p>数据流是数据实现的过程，对于相同的任务需求，最终数据流都会流向相同的地方，笔者进行举例，以数组操作为例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">int array[] = &#123;1,1,1,1,1&#125;;</span><br><span class="line">for(int i = 0; i &lt; 3 ; i++)&#123;</span><br><span class="line">    array[i] = array[i] + 1;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>注意到，每个数据之间都不具有依赖性，也就是说，我们可以使用不同数量的CPU并行处理这些程序。</p>
+<p>为了更方便抽象出并行、串行流的概念，笔者决定将其转化为汇编，这样操作尺度更小，更容易观察程序流。</p>
+<p>数组每个成员加一既是结果，也是过程的必然，但是考虑一下两种情况：</p>
+<p>f2就是常量1，x1就是数组地址起始处，汇编程序优化的另一个依据就是有些指令消耗周期开销较大，不得不使用nop延时，但是我们可以使用依赖无关指令替换nop。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">fld f0, 0(x1)</span><br><span class="line">fadd.d f4, f0, f2</span><br><span class="line">fsd f4, 0(x1)</span><br><span class="line"></span><br><span class="line">fld f6, 8(x1)</span><br><span class="line">fadd.d f8, f6, f2</span><br><span class="line">fsd f8, 8(x1)</span><br><span class="line"></span><br><span class="line">fld f6, 16(x1)</span><br><span class="line">fadd.d f12, f0, f2</span><br><span class="line">fsd f12, 16(x1)</span><br><span class="line"></span><br><span class="line">fld f14, 24(x1)</span><br><span class="line">fadd.d f16, f14, f2</span><br><span class="line">fsd f16, 24(x1)</span><br></pre></td></tr></table></figure>
+
+<p>耗费的时钟周期计算：（1+2）*4 + 12个指令 &#x3D; 24个时钟周期</p>
+<p> 第二种</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">fld,f0,0(x1)</span><br><span class="line">fld,f6,8(x1)</span><br><span class="line">fld,f6,16(x1)</span><br><span class="line">fld,f14,24(x1)</span><br><span class="line">fadd.d,f4,f0,f2</span><br><span class="line">fadd.d,f8,f6,f2</span><br><span class="line">fadd.d,f12,f0,f2</span><br><span class="line">fadd.d,f16,f14,f2</span><br><span class="line">fsd,f4,0(x1)</span><br><span class="line">fsd,f8,8(x1)</span><br><span class="line">fsd,f12,16(x1)</span><br><span class="line">fsd,f16,24(x1)</span><br></pre></td></tr></table></figure>
+
+<p>耗费的时钟周期计算：0 + 12个指令 &#x3D; 12个时钟周期。</p>
+<p>从上面可以看出，两种情况的数据移动操作流向是相同的，但是第二种操作明显优于第一种，它的并行性明显更好，可读性也更好。</p>
+<p>数据流，就是固定的三个指令，完成加载、相加、存储的这三个指令，所以说从流向来看，数据流是固定的。虽然可能使用的寄存器不同，但过程是相同的，它一定会流向固定的过程和结果。</p>
+<p>控制流就是控制指令执行顺序，可以看出，第二种明显优于第一种，这就是控制流调度的结果。</p>
+<p>通过以上转换，我们就得到了在指令层面上具有良好并行性的程序，可以让不同的CPU执行不同的并行流。</p>
+<p>这种寄存器重命名算法叫什么来着？算了，笔者也记不清了，应该是computer architecture里面的算法。</p>
+<p>数据依赖有三种类型：</p>
+<p>真依赖：写运算后面接一个读运算</p>
+<p>反依赖：读运算后面接一个写运算</p>
+<p>输出依赖：两个针对同一个位置的写运算</p>
+<p>依赖性产生的条件：</p>
+<p>1.必须有一个操作是写操作</p>
+<p>2.存在不同的迭代访问了同一个内存位置</p>
+<p>举例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for(i = 0; i &lt;= 10; i++)&#123;</span><br><span class="line">	for(j = 0; j &lt;= 10; j++)&#123;</span><br><span class="line">		Z[i][j] = Z[j+10][i+11];</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>只考虑整数解的方程被称为丢番图方程。</p>
+<p>我们考虑有两次访问，列出不等式和依赖条件：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0&lt;=i1,j1,i2,j2&lt;=10</span><br><span class="line">i1 = j2 + 10</span><br><span class="line">j1 = i2 + 11</span><br></pre></td></tr></table></figure>
+
+<p>gcd测试就是最大公约数测试，我们可以把方程写成gcd(1,1,10)，然后确定是否有解，如果gcd无解，那么该方程也无解。</p>
+<p>理由是：对于整数乘法，相等的两边必定存在公约数。</p>
+<p>举例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2i = 2j +1</span><br></pre></td></tr></table></figure>
+
+<p>这个丢番图方程显然是没有解的。</p>
+<p>观察两个方程，可以确定都存在整数解，我们求解的结果是不等式，因此求解的技巧就是将等式带入不等式，</p>
+<p>重新整理不等式可以得到：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">10 &lt;= i1 &lt;= 10</span><br><span class="line">11 &lt;= i2 &lt;= 10</span><br></pre></td></tr></table></figure>
+
+<p>那么数据依赖并不存在，因为该不等式无法满足。</p>
+<p>在求解不等式时，我们也可以观察上下界，并将上下界替换为某些最小的常量，这被称之为无环测试。</p>
+<h3 id="不等式与有向图"><a href="#不等式与有向图" class="headerlink" title="不等式与有向图"></a>不等式与有向图</h3><p>任何数据，只要它能够体现出方向性，那么它就可以被转换为有向图。</p>
+<p>我们可以使用循环残数测试不等式的有向图是否合理，具体规则就是：如果有环的值是负数，那么这些约束肯定不成立。</p>
+<p>有向图边长的权重的实际意义就是：将不等式消去中间项，转化为上界和下界，如果上下界发生矛盾，那么该解就不成立。</p>
+<p>具体做法如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">v &lt;= c替换成v &lt;= v0 + c</span><br><span class="line">c &lt;= v替换成v0 &lt;= v - c</span><br></pre></td></tr></table></figure>
+
+<p>举例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1 &lt;= v1,v2 &lt;= 10</span><br><span class="line">0 &lt;= v3 &lt;= 4</span><br><span class="line">v2 &lt;= v1</span><br><span class="line">2v1 &lt;= 2v3 - 7</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>我们可以先从最后一个入手，由于我们求解的对象是丢番图方程，也就是说，我们只用考虑整数解，最后一个方程化为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">v1 &lt;= v3 - 7/2 </span><br><span class="line">也就是：</span><br><span class="line">v1 &lt;= v3 -4 &lt;= v3 - 7/2</span><br></pre></td></tr></table></figure>
+
+<p>现在应用上面的做法：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">v0 &lt;= v1 - 1, v1 &lt;= v0 + 10</span><br><span class="line">v0 &lt;= v2 - 1, v2 &lt;= v0 + 10</span><br><span class="line">v0 &lt;= v3, v3 &lt;= v0 + 4</span><br><span class="line">v2 &lt;= v1,</span><br><span class="line">v1 &lt;= v3 - 4</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>画出约束图：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line"></span><br><span class="line">Aa(v2)--0--&gt;Ab(v1)--负4--&gt;Ac(v3)--+4--&gt;Ad(v0)</span><br><span class="line">Ad--0--&gt;Ac</span><br><span class="line">Ad--+10--&gt;Aa</span><br><span class="line">Aa--+10--&gt;Ad</span><br><span class="line">Ab--+10--&gt;Ad</span><br><span class="line">Ad--负1--&gt;Ab</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>我们观察到，在v0–&gt;v1–&gt;v3–&gt;v0这条环中，权重是负数，也就是说这些约束条件无解。</p>
+<p>可能使用图直接应用不够直观，让我们从不等式进行推导：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">v1--&gt;v0，对应图的-4 + +4 ，也就是0，对应不等式变换：</span><br><span class="line">v1 + 4 &lt;= v3 &lt;= v0 + 4,</span><br><span class="line">剩下的同理</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>我们发现，各边权重相加的过程，其实就是不等式消除中间变量导向两边关系的过程。</p>
+<p>最终，如果环的权重小于0，那么说明两边出现了矛盾性，我们可以推断出：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">v &lt; v</span><br></pre></td></tr></table></figure>
+
+<p>这样的关系明显是不可能存在的，所以这些约束关系无解。</p>
+<h4 id="记忆模式"><a href="#记忆模式" class="headerlink" title="记忆模式"></a>记忆模式</h4><p>记忆模式就是查表记录，对图问题的求解是一个NPC问题，就是可以看见求解集合的范围，也可以进行穷举，但是很难找到一个多项式算法来描述它，不过也有人给出了各种条件下的NPC问题求解算法，所以有人开玩笑说：证明NPC问题本身就是一个NPC问题。</p>
+<p>记忆模式，其实就是计算结果后，保存到表中，这样处理后，每次算法都可以查询这个表。</p>
+<p>其实既然涉及到了记忆模式，那么可以考虑使用自动机了，我们可以保留某些结果的特征，作为NFA（有穷自动机）中的状态转换的部分，不然每一次都要遍历全部结果，这样的算法是得不偿失的。</p>
+<h4 id="使用Fourier-Motzkin算法-1"><a href="#使用Fourier-Motzkin算法-1" class="headerlink" title="使用Fourier-Motzkin算法"></a>使用Fourier-Motzkin算法</h4><p>在前面的文章中提到过这个算法，它是一个多面体约束常用的算法，我们也可以用它对不等式进行运算处理，这里就不过多赘述了。</p>
+<h2 id="寻找无同步的并行性"><a href="#寻找无同步的并行性" class="headerlink" title="寻找无同步的并行性"></a>寻找无同步的并行性</h2><p>在前文介绍过数据的空间维度，我们知道外层循环如果迭代的是独立的维度，那么彼此互不影响，也就是说，独立的维度循环可以交换迭代深度。</p>
+<h3 id="循环嵌套交换"><a href="#循环嵌套交换" class="headerlink" title="循环嵌套交换"></a>循环嵌套交换</h3><p>有程序如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for(i = 0; i &lt; 5; i++)&#123;</span><br><span class="line">	for(j = 0; j &lt; 3; j++)&#123;</span><br><span class="line">		Z[i][j] = 1;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们一眼就能看出可以交换循环：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for(j = 0; j &lt; 3; j++)&#123;</span><br><span class="line">	for(i = 0; i &lt; 5; i++)&#123;</span><br><span class="line">		Z[i][j] = 1;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>现在我们的目的是寻找普遍规律，即：在满足什么条件下外层嵌套循环可以交换？</p>
+<p>笔者给出结论：动态访问之间不存在依赖关系时。</p>
+<p>程序约束如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0 &lt; i &lt; 5</span><br><span class="line">0 &lt; j &lt; 3 </span><br></pre></td></tr></table></figure>
+
+<p>明显是不存在依赖的。</p>
+<p>现在看另一个例子：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">for(i = 0; i &lt; 9; i++;)&#123;</span><br><span class="line">	for(j = 9; j &gt; 0; j--)&#123;</span><br><span class="line">		Z[i][j] = Z[i + j][i - j + 10];</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>观察该循环，列不等式如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0 &lt; i &lt; 9</span><br><span class="line">0 &lt; j &lt; 9</span><br></pre></td></tr></table></figure>
+
+<p>假设有两组不同访问i，j，i1，j1使得：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">i = i1 + j1</span><br><span class="line">j = i1 - j1 + 10</span><br></pre></td></tr></table></figure>
+
+<p>带入不等式：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0 &lt; i1 + j1 &lt; 9</span><br><span class="line">0 &lt; i1 - j1 + 10 &lt; 9</span><br></pre></td></tr></table></figure>
+
+<p>由原不等式可得：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">i1 &lt; 9 - j1</span><br><span class="line">i1 &lt; j1 - 1</span><br></pre></td></tr></table></figure>
+
+<p>显然，该不等式有解，该循环嵌套是存在依赖关系的，也就是说，我们并不能对其进行优化。</p>
+<p>依赖关系具体体现，就是在与数据的一个维度里，却存在多个迭代维度，如果交换外层循环迭代，我们会发现不同迭代的作用到数据具体维度时，它们的数据访问顺序会被打断。</p>
+<p>当不同数组的维度的迭代维度不单一时，是很难发现程序的并行性的，但是我们都知道，每个数据维度只要一个迭代维度就能全部遍历，像这样的多个迭代作用的情况是非常少的。</p>
+<p>所以我们也发现了另一种可能性：如果每个数据维度与每个迭代维度对应，数据之间是不是不存在依赖关系了？</p>
+<p>举例，以下是一个多重网格算法：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">	for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">		AP[j][i] = ...;</span><br><span class="line">		T = 1/(1 + AP[j][i]);</span><br><span class="line">		D[2][j][i] = T*AP[j][i];</span><br><span class="line">		DW[1][2][j][i] = T*DW[1][2][j][i];</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">for(k = 3; k &lt;= k1 - 1; k++)&#123;</span><br><span class="line">	for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">		for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">			AM[j][i] = AP[j][i];</span><br><span class="line">			AP[j][i] = ...;</span><br><span class="line">			T = ...AP[j][i] - AM[j][i]*D[k-1][j][i]...;</span><br><span class="line">			D[k][j][i] = T*AP[j][i];</span><br><span class="line">			DW[1][k][j][i] = T*(DW[1][k][j][i] + DW[1][k-1][j][i])...;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">for(k = k1-1; k &gt; 2; k--)&#123;</span><br><span class="line">	for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">		for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">			DW[1][k][j][i] = DW[1][k][j][1] + D[k][j][i]*DW[1][k+1][j][i];</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>尽管这些代码和数组操作非常长，我们却发现嵌套循的迭代维度和数组的访问维度都是相对独立的，那么让我们尝试将循环嵌套改写：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line">for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">	for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">		AP[j][i] = ...;</span><br><span class="line">		T = 1/(1 + AP[j][i]);</span><br><span class="line">		D[2][j][i] = T*AP[j][i];</span><br><span class="line">		DW[1][2][j][i] = T*DW[1][2][j][i];</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">	for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">		for(k = 3; k &lt;= k1 - 1; k++)&#123;</span><br><span class="line">			AM[j][i] = AP[j][i];</span><br><span class="line">			AP[j][i] = ...;</span><br><span class="line">			T = ...AP[j][i] - AM[j][i]*D[k-1][j][i]...;</span><br><span class="line">			D[k][j][i] = T*AP[j][i];</span><br><span class="line">			DW[1][k][j][i] = T*(DW[1][k][j][i] + DW[1][k-1][j][i])...;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">	for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">		for(k = k1-1; k &gt; 2; k--)&#123;</span><br><span class="line">			DW[1][k][j][i] = DW[1][k][j][1] + D[k][j][i]*DW[1][k+1][j][i];</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>合并如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">	for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">		AP[j][i] = ...;</span><br><span class="line">		T = 1/(1 + AP[j][i]);</span><br><span class="line">		D[2][j][i] = T*AP[j][i];</span><br><span class="line">		DW[1][2][j][i] = T*DW[1][2][j][i];</span><br><span class="line">		</span><br><span class="line">		for(k = 3; k &lt;= k1 - 1; k++)&#123;</span><br><span class="line">			AM[j][i] = AP[j][i];</span><br><span class="line">			AP[j][i] = ...;</span><br><span class="line">			T = ...AP[j][i] - AM[j][i]*D[k-1][j][i]...;</span><br><span class="line">			D[k][j][i] = T*AP[j][i];</span><br><span class="line">			DW[1][k][j][i] = T*(DW[1][k][j][i] + DW[1][k-1][j][i])...;</span><br><span class="line">		&#125;</span><br><span class="line">		</span><br><span class="line">		for(k = k1-1; k &gt; 2; k--)&#123;</span><br><span class="line">			DW[1][k][j][i] = DW[1][k][j][1] + D[k][j][i]*DW[1][k+1][j][i];</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>画出流程图：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line">Aa(CPU计算T)--&gt;Ab(CPU处理D数组)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>再进一步发现，T作为一个中间值，其实是严重影响了程序的并行性的，我们可以尝试将它直接消去，不过在处理器和内存充足的条件下，我们其实是有更好的办法，我们可以尝试把T改写成数组，也就是：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line">Aa(每个CPU从T数组中获取值)--&gt;Ab(每个CPU分别处理D数组)</span><br></pre></td></tr></table></figure>
+
+<p>将T改写为数组，其实是比直接消去更有优势的，因为这样做，每个CPU可以先分别计算T数组中的每个值，并行的粒度会减小。</p>
+<p>另外，如果我们分配任务给多CPU，每个CPU会分别计算T并且进行处理，但是，我们假设CPU与数组数量并是一一对应的，那么此时每个CPU都会使用一个T，其实这就是一个数组，因此，我们需要将T改写成数组：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">for(j = 2; j &lt;= j1; j++)&#123;</span><br><span class="line">	for(i = 2; i &lt;= i1; i++)&#123;</span><br><span class="line">		AP[j][i] = ...;</span><br><span class="line">		T[j][i] = 1/(1 + AP[j][i]);</span><br><span class="line">		D[2][j][i] = T[j][i]*AP[j][i];</span><br><span class="line">		DW[1][2][j][i] = T[j][i]*DW[1][2][j][i];</span><br><span class="line">		</span><br><span class="line">		for(k = 3; k &lt;= k1 - 1; k++)&#123;</span><br><span class="line">			AM[j][i] = AP[j][i];</span><br><span class="line">			AP[j][i] = ...;</span><br><span class="line">			T[j][i] = ...AP[j][i] - AM[j][i]*D[k-1][j][i]...;</span><br><span class="line">			D[k][j][i] = T[j][i]*AP[j][i];</span><br><span class="line">			DW[1][k][j][i] = T[j][i]*(DW[1][k][j][i] + DW[1][k-1][j][i])...;</span><br><span class="line">		&#125;</span><br><span class="line">		</span><br><span class="line">		for(k = k1-1; k &gt; 2; k--)&#123;</span><br><span class="line">			DW[1][k][j][i] = DW[1][k][j][1] + D[k][j][i]*DW[1][k+1][j][i];</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="仿射空间划分"><a href="#仿射空间划分" class="headerlink" title="仿射空间划分"></a>仿射空间划分</h3><p>在学会如何分析数据独立性与循环独立后，我们可以开始尝试将代码分配到具体的处理器上以实现并行。</p>
+<p>假设循环迭代维度和数组维度都是一一对应且独立的，那么K维的循环独立就对应K维的处理器空间，每个维度的步长可分配对应的CPU个数。</p>
+<h1 id="仿射空间划分的依据可以根据循环嵌套的作用域进行划分，在前面我们已经知道如何使用线性代数来表示循环，因此，对于在前文提到的程序，将-p1-p2-作为CPU的ID，对第二层之内的循环有：-begin-pmatrix-p1-p2-end-pmatrix"><a href="#仿射空间划分的依据可以根据循环嵌套的作用域进行划分，在前面我们已经知道如何使用线性代数来表示循环，因此，对于在前文提到的程序，将-p1-p2-作为CPU的ID，对第二层之内的循环有：-begin-pmatrix-p1-p2-end-pmatrix" class="headerlink" title="仿射空间划分的依据可以根据循环嵌套的作用域进行划分，在前面我们已经知道如何使用线性代数来表示循环，因此，对于在前文提到的程序，将[p1, p2]作为CPU的ID，对第二层之内的循环有：$$\begin{pmatrix}p1 \p2\end{pmatrix}"></a>仿射空间划分的依据可以根据循环嵌套的作用域进行划分，在前面我们已经知道如何使用线性代数来表示循环，因此，对于在前文提到的程序，将[p1, p2]作为CPU的ID，对第二层之内的循环有：<br>$$<br>\begin{pmatrix}<br>p1 \<br>p2<br>\end{pmatrix}</h1><h1 id="begin-pmatrix-1-0-0-1-end-pmatrix-begin-pmatrix-i-j-end-pmatrix-begin-pmatrix-0-0-end-pmatrix-对于最里层的两个循环，它不仅在上面的作用范围内，而且它还有一个局部维度k，因此有：-begin-pmatrix-p1-p2-end-pmatrix"><a href="#begin-pmatrix-1-0-0-1-end-pmatrix-begin-pmatrix-i-j-end-pmatrix-begin-pmatrix-0-0-end-pmatrix-对于最里层的两个循环，它不仅在上面的作用范围内，而且它还有一个局部维度k，因此有：-begin-pmatrix-p1-p2-end-pmatrix" class="headerlink" title="\begin{pmatrix}1&amp;0\0&amp;1\end{pmatrix}*\begin{pmatrix}i\j\end{pmatrix}+\begin{pmatrix}0\0\end{pmatrix}$$对于最里层的两个循环，它不仅在上面的作用范围内，而且它还有一个局部维度k，因此有：$$\begin{pmatrix}p1 \p2\end{pmatrix}"></a>\begin{pmatrix}<br>1&amp;0\<br>0&amp;1<br>\end{pmatrix}<br>*<br>\begin{pmatrix}<br>i\<br>j<br>\end{pmatrix}<br>+<br>\begin{pmatrix}<br>0\<br>0<br>\end{pmatrix}<br>$$<br>对于最里层的两个循环，它不仅在上面的作用范围内，而且它还有一个局部维度k，因此有：<br>$$<br>\begin{pmatrix}<br>p1 \<br>p2<br>\end{pmatrix}</h1><p>\begin{pmatrix}<br>0&amp;1&amp;0\<br>0&amp;0&amp;1<br>\end{pmatrix}<br>*<br>\begin{pmatrix}<br>k\<br>i\<br>j<br>\end{pmatrix}<br>+<br>\begin{pmatrix}<br>0\<br>0<br>\end{pmatrix}<br>$$<br>由于我们的处理器是2维的，但是K的作用域不止一个，因此矩阵系数为0。</p>
+<h3 id="空间分划约束"><a href="#空间分划约束" class="headerlink" title="空间分划约束"></a>空间分划约束</h3><p>在前文已经介绍过了依赖关系的产生，具体到数组访问上，就是该等式成立：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">F1i1 + c1 = F2i2 + c2</span><br></pre></td></tr></table></figure>
+
+<p>对于循环迭代，只要迭代的范围合理即可：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">B1i1 + b1 &gt;= 0</span><br><span class="line">B2i2 + b2 &gt;= 0</span><br></pre></td></tr></table></figure>
+
+<p>CPU分配的依据是循环迭代的维度，我们知道循环迭代满足的不等式关系如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">B1i1 + b1 &gt;= 0</span><br><span class="line">B2i2 + b2 &gt;= 0</span><br><span class="line"></span><br><span class="line">具体循环：</span><br><span class="line">for(i = 0; i &lt; b; i++)&#123;</span><br><span class="line">	.....</span><br><span class="line">&#125;</span><br><span class="line">可将0 &lt; i &lt; b写成上述不等式  </span><br></pre></td></tr></table></figure>
+
+<p>这是单独的一个循环的作用范围，该丢番图不等式的求解结果，每一个结果都可以对应一个处理器,</p>
+<p>现在我们引入了CPU的数量，也就是说，有依赖关系的数据应访问同一个CPU：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">两组数据CPU分配如下：</span><br><span class="line">C1i1 + c1 = C2i2 + c2</span><br></pre></td></tr></table></figure>
+
+<p>具体解释就是：假设两组循环遍历次数是a * b，且[0,a]和[0,b]就是不同维度处理器的坐标范围，我们要考虑的是具体数组访问的冲突情况。</p>
+<p>但是，假设遍历是从10到10+a，另一个遍历是从12到12+b,那么我们就要将遍历的维度线性变换到实际的处理器维度，这就是CPU矩阵分配的实质，例如：访问维度是[12,12]，处理器是[0, 0]，这两个矩阵的映射需要做一个线性变换。</p>
+<p>单一语句访问下的分配只要做一次线性映射即可，如果是多语句的情况，又要再做多次线性变换，也就是说，我们必须满足所有语句的处理器分配，如果我们满足了访问维度最复杂的语句的分配，那么其他简单的也应该会被满足，最复杂的访问，也就意味着是所有语句中矩阵的秩最大的那个。</p>
+<p>如果发生了冲突访问但是并没有将操作映射到同一个CPU上，那么这两个CPU必须同步，这是我们不愿看到的。</p>
+<h1 id="继续观察该仿射划分：-begin-pmatrix-p1-p2-end-pmatrix"><a href="#继续观察该仿射划分：-begin-pmatrix-p1-p2-end-pmatrix" class="headerlink" title="继续观察该仿射划分：$$\begin{pmatrix}p1 \p2\end{pmatrix}"></a>继续观察该仿射划分：<br>$$<br>\begin{pmatrix}<br>p1 \<br>p2<br>\end{pmatrix}</h1><p>\begin{pmatrix}<br>0&amp;1&amp;0\<br>0&amp;0&amp;1<br>\end{pmatrix}<br>*<br>\begin{pmatrix}<br>k\<br>i\<br>j<br>\end{pmatrix}<br>+<br>\begin{pmatrix}<br>0\<br>0<br>\end{pmatrix}<br>$$<br>我们发现，不同作用域下，仿射划分的向量系数的秩不一样，我们知道矩阵的秩的实际意义就是相对独立的维度，正如笔者前面所说的，如果我们选择一个仿射划分，应当选择所有语句的秩的最大值。</p>
+<h3 id="求解空间分划约束"><a href="#求解空间分划约束" class="headerlink" title="求解空间分划约束"></a>求解空间分划约束</h3></div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/compilers/" rel="tag">compilers</a></li></ul></div><div class="post-nav"><a class="pre" href="/2025/01/02/%E7%BA%A2%E9%BB%91%E6%A0%91%E5%AE%9E%E7%8E%B0/">红黑树实现</a><a class="next" href="/2024/12/21/%E9%BE%99%E4%B9%A6%E9%99%84%E5%BD%95B%E6%B1%82%E8%A7%A3/">龙书附录B求解</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://example.com"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar.png"/></a><p>To be a better man.</p><a class="info-icon" href="https://twitter.com/username" title="Twitter" target="_blank" style="margin-inline:5px"> <i class="fa fa-twitter-square" style="margin-inline:5px"></i></a><a class="info-icon" href="mailto:admin@domain.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/username" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a><a class="info-icon" href="/atom.xml" title="RSS" target="_blank" style="margin-inline:5px"> <i class="fa fa-rss-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/c-flow/" style="font-size: 15px;">c flow</a> <a href="/tags/%E8%99%9A%E5%87%BD%E6%95%B0%E8%A1%A8/" style="font-size: 15px;">虚函数表</a> <a href="/tags/C-language/" style="font-size: 15px;">C language</a> <a href="/tags/linux-kernel/" style="font-size: 15px;">linux kernel</a> <a href="/tags/%E5%86%85%E5%AD%98/" style="font-size: 15px;">内存</a> <a href="/tags/Embedded-RTOS/" style="font-size: 15px;">Embedded RTOS</a> <a href="/tags/c-language/" style="font-size: 15px;">c language</a> <a href="/tags/RTOS/" style="font-size: 15px;">RTOS</a> <a href="/tags/C-lauguage/" style="font-size: 15px;">C lauguage</a> <a href="/tags/compiler/" style="font-size: 15px;">compiler</a> <a href="/tags/GDB/" style="font-size: 15px;">GDB</a> <a href="/tags/UDP/" style="font-size: 15px;">UDP</a> <a href="/tags/TCP-IP-stack/" style="font-size: 15px;">TCP/IP stack</a> <a href="/tags/compilers/" style="font-size: 15px;">compilers</a> <a href="/tags/ble/" style="font-size: 15px;">ble</a> <a href="/tags/data-struct/" style="font-size: 15px;">data struct</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2025/02/08/UDP%E5%8D%8F%E8%AE%AE/">UDP协议</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/02/05/%E8%93%9D%E7%89%99%E6%9C%8D%E5%8A%A1/">蓝牙服务</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/19/TCP%E5%8D%8F%E8%AE%AE%E4%B8%80/">TCP协议一</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/13/SparrowRTOS%E9%93%BE%E8%A1%A8%E7%89%88%E6%9C%AC/">SparrowRTOS链表版本</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/02/%E7%BA%A2%E9%BB%91%E6%A0%91%E5%AE%9E%E7%8E%B0/">红黑树实现</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/23/%E7%A8%8B%E5%BA%8F%E4%BC%98%E5%8C%96%E4%B9%8B%E6%95%B0%E6%8D%AE%E7%AF%87/">程序优化之数据篇</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/21/%E9%BE%99%E4%B9%A6%E9%99%84%E5%BD%95B%E6%B1%82%E8%A7%A3/">龙书附录B求解</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/17/SparrowRTOS%E7%A7%BB%E6%A4%8D/">SparrowRTOS移植</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/11/C4%E6%BA%90%E7%A0%81%E6%AC%A3%E8%B5%8F/">C4编译器源码解析</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/10/GdbPythonAPI/">GdbPythonAPI</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.example1.com/" title="site-name1" target="_blank">site-name1</a><ul></ul><a href="http://www.example2.com/" title="site-name2" target="_blank">site-name2</a><ul></ul><a href="http://www.example3.com/" title="site-name3" target="_blank">site-name3</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2025 <a href="/." rel="nofollow">Hexo.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>

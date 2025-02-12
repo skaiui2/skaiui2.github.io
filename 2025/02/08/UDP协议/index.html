@@ -1,0 +1,179 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>UDP协议 | Hexo</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="https://unpkg.com/normalize.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/pure-min.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="https://unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="https://unpkg.com/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="https://unpkg.com/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="https://unpkg.com/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="https://unpkg.com/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 7.3.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">UDP协议</h1><a id="logo" href="/.">Hexo</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a><a href="/atom.xml"><i class="fa fa-rss"> 订阅</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">UDP协议</h1><div class="post-meta">2025-02-08</div><div class="post-content"><p>skaiuijing</p>
+<p>UDP是一个无连接的协议。</p>
+<p><strong>笔者使用的源码为lwip2.20版本，4.4BSD-lite。</strong></p>
+<p>lwip是一个轻量级的TCP&#x2F;IP实现，通常被使用在单片机这些资源受限的场景上，往往搭配RTOS使用。</p>
+<p>4.4BSD-lite是一个跨时代的操作系统，TCP&#x2F;IP三卷中的协议栈源码就来自该操作系统。</p>
+<h2 id="pbuf和mbuf"><a href="#pbuf和mbuf" class="headerlink" title="pbuf和mbuf"></a>pbuf和mbuf</h2><p>pbuf和mbuf分别是两种协议栈中携带数据包的实现。</p>
+<p>在长篇大论UDP之前，我们先讲一讲IP报头结构：</p>
+<h2 id="IP报头结构"><a href="#IP报头结构" class="headerlink" title="IP报头结构"></a>IP报头结构</h2><p>IP报头结构如下：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>长度（字节）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>版本&#x2F;头部长度</td>
+<td>1</td>
+</tr>
+<tr>
+<td>服务类型</td>
+<td>1</td>
+</tr>
+<tr>
+<td>总长度</td>
+<td>2</td>
+</tr>
+<tr>
+<td>标识</td>
+<td>2</td>
+</tr>
+<tr>
+<td>片偏移字段</td>
+<td>2</td>
+</tr>
+<tr>
+<td>生存时间（TTL）</td>
+<td>1</td>
+</tr>
+<tr>
+<td>协议</td>
+<td>1</td>
+</tr>
+<tr>
+<td>校验和</td>
+<td>2</td>
+</tr>
+<tr>
+<td>源IP地址</td>
+<td>4</td>
+</tr>
+<tr>
+<td>目的IP地址</td>
+<td>4</td>
+</tr>
+</tbody></table>
+<p>lwip中定义结构体如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">struct ip_hdr &#123;</span><br><span class="line">  /* version / header length */</span><br><span class="line">  PACK_STRUCT_FLD_8(u8_t _v_hl);</span><br><span class="line">  /* type of service */</span><br><span class="line">  PACK_STRUCT_FLD_8(u8_t _tos);</span><br><span class="line">  /* total length */</span><br><span class="line">  PACK_STRUCT_FIELD(u16_t _len);</span><br><span class="line">  /* identification */</span><br><span class="line">  PACK_STRUCT_FIELD(u16_t _id);</span><br><span class="line">  /* fragment offset field */</span><br><span class="line">  PACK_STRUCT_FIELD(u16_t _offset);</span><br><span class="line">#define IP_RF 0x8000U        /* reserved fragment flag */</span><br><span class="line">#define IP_DF 0x4000U        /* don&#x27;t fragment flag */</span><br><span class="line">#define IP_MF 0x2000U        /* more fragments flag */</span><br><span class="line">#define IP_OFFMASK 0x1fffU   /* mask for fragmenting bits */</span><br><span class="line">  /* time to live */</span><br><span class="line">  PACK_STRUCT_FLD_8(u8_t _ttl);</span><br><span class="line">  /* protocol*/</span><br><span class="line">  PACK_STRUCT_FLD_8(u8_t _proto);</span><br><span class="line">  /* checksum */</span><br><span class="line">  PACK_STRUCT_FIELD(u16_t _chksum);</span><br><span class="line">  /* source and destination IP addresses */</span><br><span class="line">  PACK_STRUCT_FLD_S(ip4_addr_p_t src);</span><br><span class="line">  PACK_STRUCT_FLD_S(ip4_addr_p_t dest);</span><br><span class="line">&#125; PACK_STRUCT_STRUCT;</span><br></pre></td></tr></table></figure>
+
+<p>好了，现在该进入UDP了。</p>
+<h2 id="报文首部结构体"><a href="#报文首部结构体" class="headerlink" title="报文首部结构体"></a>报文首部结构体</h2><p>在lwip中定义的UDP报文首部数据结构如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">struct udp_hdr&#123;</span><br><span class="line">	uint16_t src;</span><br><span class="line">	uint16_t dest;</span><br><span class="line">	uint16_t len;</span><br><span class="line">	uint16_t chksum;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="UDP控制块"><a href="#UDP控制块" class="headerlink" title="UDP控制块"></a>UDP控制块</h2><p>UDP控制块会记录UDP通信的信息</p>
+<h3 id="规范"><a href="#规范" class="headerlink" title="规范"></a>规范</h3><p>根据协议规范，UDP布局如下：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>长度（位）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>**源端口 与 目的端口 **</td>
+<td>都是2字节</td>
+</tr>
+<tr>
+<td><strong>长度  与 校验和</strong></td>
+<td>也都是2字节</td>
+</tr>
+<tr>
+<td><strong>数据</strong></td>
+<td>变长（最小可为0）</td>
+</tr>
+</tbody></table>
+<p>前四个元素组成UDP头部。</p>
+<p>在BSD中头部数据结构如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">/*</span><br><span class="line"> * Udp protocol header.</span><br><span class="line"> * Per RFC 768, September, 1981.</span><br><span class="line"> */</span><br><span class="line">struct udphdr &#123;</span><br><span class="line">	u_short	uh_sport;		/* source port */</span><br><span class="line">	u_short	uh_dport;		/* destination port */</span><br><span class="line">	short	uh_ulen;		/* udp length */</span><br><span class="line">	u_short	uh_sum;			/* udp checksum */</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>在前文笔者给出了IP层的报文结构，对于IP层来说，发送给哪个传输层协议需要根据字段中的值进行判断，也就是服务类型，IP层根据这个值把数据报分离到特定的传输协议。</p>
+<p>因此不同协议可以使用的端口号是独立的，不同的协议使用相同的端口号是不会冲突的。同样的，对于两个不同的服务器来说，只要它们使用不同的传输协议，那么它们可以使用相同的端口号和IP地址。</p>
+<p>lwip中定义如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">struct udp_pcb &#123;</span><br><span class="line">/** Common members of all PCB types */</span><br><span class="line">  IP_PCB;</span><br><span class="line"></span><br><span class="line">/* Protocol specific PCB members */</span><br><span class="line"></span><br><span class="line">  struct udp_pcb *next;</span><br><span class="line"></span><br><span class="line">  u8_t flags;</span><br><span class="line">  /** ports are in host byte order */</span><br><span class="line">  u16_t local_port, remote_port;</span><br><span class="line"></span><br><span class="line">#if LWIP_MULTICAST_TX_OPTIONS</span><br><span class="line">#if LWIP_IPV4</span><br><span class="line"> //指定多播数据包的传出网络接口的IPv4地址</span><br><span class="line">  ip4_addr_t mcast_ip4;</span><br><span class="line">#endif /* LWIP_IPV4 */</span><br><span class="line">  //指定物理接口</span><br><span class="line">  u8_t mcast_ifindex;</span><br><span class="line">  //多播数据包的生存时间，即被丢弃前可经过的最大路由跳数</span><br><span class="line">  u8_t mcast_ttl;</span><br><span class="line">#endif </span><br><span class="line"></span><br><span class="line">#if LWIP_UDPLITE</span><br><span class="line">  //仅用于UDP_LITE的校验</span><br><span class="line">  u16_t chksum_len_rx, chksum_len_tx;</span><br><span class="line">#endif /* LWIP_UDPLITE */</span><br><span class="line"></span><br><span class="line">  /** receive callback function */</span><br><span class="line">  udp_recv_fn recv;</span><br><span class="line">  /** user-supplied argument for the recv callback */</span><br><span class="line">  void *recv_arg;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>IP_PCB控制块结构体定义，准确来说，它是所有控制块的父类：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">/** This is the common part of all PCB types. It needs to be at the</span><br><span class="line">   beginning of a PCB type definition. It is located here so that</span><br><span class="line">   changes to this common part are made in one location instead of</span><br><span class="line">   having to change all PCB structs. */</span><br><span class="line">#define IP_PCB                             \</span><br><span class="line">  /* ip addresses in network byte order */ \</span><br><span class="line">  ip_addr_t local_ip;                      \</span><br><span class="line">  ip_addr_t remote_ip;                     \</span><br><span class="line">  /* Bound netif index */                  \</span><br><span class="line">  u8_t netif_idx;                          \</span><br><span class="line">  /* Socket options */                     \</span><br><span class="line">  u8_t so_options;                         \</span><br><span class="line">  /* Type Of Service */                    \</span><br><span class="line">  u8_t tos;                                \</span><br><span class="line">  /* Time To Live */                       \</span><br><span class="line">  u8_t ttl                                 \</span><br><span class="line">  /* link layer address resolution hint */ \</span><br><span class="line">  IP_PCB_NETIFHINT</span><br></pre></td></tr></table></figure>
+
+<p>在RTOS中，线程取代了进程，应用线程持有特定的端口号，当UDP收到一个报文时，会对链表上的PCB进行遍历并匹配本地持有特定端口号的UDP控制块。</p>
+<p>UDP控制块中的callbak函数会在lwip接收数据时被调用，它与recv字段有关。</p>
+<h2 id="UDP伪头部"><a href="#UDP伪头部" class="headerlink" title="UDP伪头部"></a>UDP伪头部</h2><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>大小</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>源IP地址</td>
+<td>4字节</td>
+</tr>
+<tr>
+<td>目的IP地址</td>
+<td>4字节</td>
+</tr>
+<tr>
+<td>全0</td>
+<td>1字节</td>
+</tr>
+<tr>
+<td>协议号</td>
+<td>1字节</td>
+</tr>
+<tr>
+<td>UDP长度</td>
+<td>2字节</td>
+</tr>
+</tbody></table>
+<p>UDP伪头部下面就是UDP头部和数据部分了，数据部分后面可能会有一个填充值。</p>
+<p>其中填充值的作用是字节对齐，确保UDP伪头部的大小是偶数，也就是12字节。这样方便计算校验和，因为校验和算法只相加16个字，我们都知道字的大小基本由CPU的寻址大小决定（32位的CPU，字的大小往往是4字节，不过也可能由编译器决定），所以校验和必定是偶数个字节。</p>
+<p>这个填充字节实际上不会被发送出去的（UDP伪头部也是），目的仅仅是辅助计算（如果数据报的长度是奇数那么就会填充该字节）。</p>
+<h2 id="校验和"><a href="#校验和" class="headerlink" title="校验和"></a>校验和</h2><p>UDP的校验和字段是端到端的，这意味着校验和的计算和验证都是在通信的<strong>发送端</strong>和<strong>接收端</strong>完成的，而中间的网络设备<strong>不参与</strong>这个过程。</p>
+<p>（除非它通过一个NAT）</p>
+<p>在<strong>IPv4</strong>中，UDP校验和是<strong>可选的</strong>，如果发送端未计算校验和，<strong>校验和字段可以填0</strong>，接收端则<strong>不会进行校验</strong>。</p>
+<p>在<strong>IPv6</strong>中，UDP校验和是<strong>强制性的</strong>，必须进行计算和验证</p>
+<p>校验和是通过对UDP伪头部计算得到的（使用IP头部中的源IP地址和目的IP地址这些信息），也就是说，NAT在把私有IP地址转换为公有IP时，必须重新对UDP校验和进行修改。</p>
+<h3 id="发送方校验"><a href="#发送方校验" class="headerlink" title="发送方校验"></a>发送方校验</h3><p>整理一下UDP伪头部相关的校验过程：</p>
+<p><strong>初始化校验和字段</strong>：发送方首先将UDP首部中的校验和字段设置为0。</p>
+<p><strong>构建校验和数据块</strong>：添加伪首部，如果数据报的长度是奇数那么就填充字节。</p>
+<p><strong>计算校验和</strong>：将上述所有内容视为一系列16位字，将它们相加，采用二进制反码求和（即每次求和后取一位补码）。</p>
+<p><strong>填写校验和字段</strong>：将计算得到的二进制反码和的反码（即取反）填入UDP首部的校验和字段。</p>
+<h3 id="接收方校验"><a href="#接收方校验" class="headerlink" title="接收方校验"></a>接收方校验</h3><p><strong>构建校验和数据块</strong>：添加伪首部，如果数据报的长度是奇数那么就填充字节。</p>
+<p><strong>计算校验和</strong>：方法同发送方校验。</p>
+<p><strong>验证校验和</strong>：</p>
+<p>将计算得到的校验和与0xFFFF（全1）比较：</p>
+<p>如果结果为0xFFFF：表示数据完整，未检测到错误。</p>
+<p>如果结果不为0xFFFF：表示数据在传输过程中发生了错误。</p>
+<p><strong>处理数据报</strong>：</p>
+<p>无错误：如果校验和验证通过，接收方可以将数据报交给上层应用程序处理。</p>
+<p>有错误：如果校验和验证失败，接收方应丢弃该UDP数据报。</p>
+<h2 id="UDP发送"><a href="#UDP发送" class="headerlink" title="UDP发送"></a>UDP发送</h2><p>从线程发送的数据会被udp_sendto_if_src进行处理,最后转交到IP层（如果不出意外的话）。</p>
+<p>发送函数如下：</p>
+<p>其实就是先检查几遍，再把UDP首部添加到pbuf中，然后填写UDP各个字段，最后输出到IP层。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br></pre></td><td class="code"><pre><span class="line">/** @ingroup udp_raw</span><br><span class="line"> * Same as @ref udp_sendto_if, but with source address */</span><br><span class="line">err_t</span><br><span class="line">udp_sendto_if_src(struct udp_pcb *pcb, struct pbuf *p,</span><br><span class="line">                  const ip_addr_t *dst_ip, u16_t dst_port, struct netif *netif, const ip_addr_t *src_ip)</span><br><span class="line">&#123;</span><br><span class="line">  struct udp_hdr *udphdr;</span><br><span class="line">  err_t err;</span><br><span class="line">  struct pbuf *q; /* q will be sent down the stack */</span><br><span class="line">  u8_t ip_proto;</span><br><span class="line">  u8_t ttl;</span><br><span class="line"></span><br><span class="line">  /* if the PCB is not yet bound to a port, bind it here */</span><br><span class="line">  if (pcb-&gt;local_port == 0) &#123;</span><br><span class="line">    err = udp_bind(pcb, &amp;pcb-&gt;local_ip, pcb-&gt;local_port);</span><br><span class="line">    if (err != ERR_OK) &#123;</span><br><span class="line">      return err;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  /* packet too large to add a UDP header without causing an overflow? */</span><br><span class="line">  if ((u16_t)(p-&gt;tot_len + UDP_HLEN) &lt; p-&gt;tot_len) &#123;</span><br><span class="line">    return ERR_MEM;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  /* not enough space to add an UDP header to first pbuf in given p chain? */</span><br><span class="line">  if (pbuf_add_header(p, UDP_HLEN)) &#123;</span><br><span class="line">    /* allocate header in a separate new pbuf */</span><br><span class="line">    q = pbuf_alloc(PBUF_IP, UDP_HLEN, PBUF_RAM);</span><br><span class="line">    if (q == NULL) &#123;</span><br><span class="line">      return ERR_MEM;</span><br><span class="line">    &#125;</span><br><span class="line">    if (p-&gt;tot_len != 0) &#123;</span><br><span class="line">      /* chain header q in front of given pbuf p */</span><br><span class="line">      pbuf_chain(q, p);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; else &#123;</span><br><span class="line">    q = p;</span><br><span class="line">  &#125;</span><br><span class="line">  udphdr = (struct udp_hdr *)q-&gt;payload;</span><br><span class="line">  udphdr-&gt;src = lwip_htons(pcb-&gt;local_port);</span><br><span class="line">  udphdr-&gt;dest = lwip_htons(dst_port);</span><br><span class="line">  udphdr-&gt;chksum = 0x0000;</span><br><span class="line"></span><br><span class="line">  /* Multicast Loop? */</span><br><span class="line">  if (((pcb-&gt;flags &amp; UDP_FLAGS_MULTICAST_LOOP) != 0) &amp;&amp; ip_addr_ismulticast(dst_ip)) &#123;</span><br><span class="line">    q-&gt;flags |= PBUF_FLAG_MCASTLOOP;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  /* Determine TTL to use */</span><br><span class="line">  ttl = pcb-&gt;ttl;</span><br><span class="line">  </span><br><span class="line">  /* output to IP */</span><br><span class="line">  err = ip_output_if_src(q, src_ip, dst_ip, ttl, pcb-&gt;tos, IP_PROTO_UDP, netif);</span><br><span class="line"></span><br><span class="line">  if (q != p) &#123;</span><br><span class="line">    pbuf_free(q);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  return err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="UDP接收"><a href="#UDP接收" class="headerlink" title="UDP接收"></a>UDP接收</h2><p>从IP层接收的数据会被UDP_input进行处理,最后转交到线程（如果不出意外的话）。</p>
+<p>接收函数：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line">/**</span><br><span class="line"> * 处理接收到的UDP数据报。</span><br><span class="line"> *</span><br><span class="line"> * 这个函数找到对应的UDP控制块，并将数据报传递给控制块的接收函数。</span><br><span class="line"> * 如果没有找到控制块或者数据报不正确，则释放数据报。</span><br><span class="line"> *</span><br><span class="line"> * @param p 指向UDP头部的数据报缓冲区</span><br><span class="line"> * @param inp 接收到数据报的网络接口</span><br><span class="line"> */</span><br><span class="line">void udp_input(struct pbuf *p, struct netif *inp) &#123;</span><br><span class="line">  struct udp_hdr *udphdr;</span><br><span class="line">  struct udp_pcb *pcb, *prev;</span><br><span class="line">  u16_t src, dest;</span><br><span class="line">  u8_t broadcast;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">  udphdr = (struct udp_hdr *)p-&gt;payload;</span><br><span class="line">  broadcast = ip_addr_isbroadcast(ip_current_dest_addr(), ip_current_netif());</span><br><span class="line">  src = lwip_ntohs(udphdr-&gt;src);   // 源端口</span><br><span class="line">  dest = lwip_ntohs(udphdr-&gt;dest); // 目的端口</span><br><span class="line"></span><br><span class="line">  // 遍历UDP控制块列表，寻找匹配的PCB</span><br><span class="line">  for (pcb = udp_pcbs; pcb != NULL; pcb = pcb-&gt;next) &#123;</span><br><span class="line">    if ((pcb-&gt;local_port == dest) &amp;&amp; </span><br><span class="line">        (udp_input_local_match(pcb, inp, broadcast) != 0)) &#123;</span><br><span class="line">      if ((pcb-&gt;remote_port == src) &amp;&amp; </span><br><span class="line">          (ip_addr_isany_val(pcb-&gt;remote_ip) || ip_addr_eq(&amp;pcb-&gt;remote_ip, ip_current_src_addr()))) &#123;</span><br><span class="line">        break;</span><br><span class="line">      &#125;</span><br><span class="line">      prev = pcb;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  // 找到匹配的PCB并处理数据报</span><br><span class="line">  if (pcb != NULL) &#123;</span><br><span class="line">#if CHECKSUM_CHECK_UDP</span><br><span class="line">    if (udphdr-&gt;chksum != 0 &amp;&amp; ip_chksum_pseudo(p, IP_PROTO_UDP, p-&gt;tot_len, ip_current_src_addr(), ip_current_dest_addr()) != 0) &#123;</span><br><span class="line">      pbuf_free(p);</span><br><span class="line">      return;</span><br><span class="line">    &#125;</span><br><span class="line">#endif</span><br><span class="line">    // 移除UDP头部</span><br><span class="line">    if (pbuf_remove_header(p, UDP_HLEN)) &#123;</span><br><span class="line">      pbuf_free(p);</span><br><span class="line">      return;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    // 调用接收回调函数</span><br><span class="line">    if (pcb-&gt;recv != NULL) &#123;</span><br><span class="line">      pcb-&gt;recv(pcb-&gt;recv_arg, pcb, p, ip_current_src_addr(), src);</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">      pbuf_free(p);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; else &#123;</span><br><span class="line">    pbuf_free(p);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/UDP/" rel="tag">UDP</a></li></ul></div><div class="post-nav"><a class="next" href="/2025/02/05/%E8%93%9D%E7%89%99%E6%9C%8D%E5%8A%A1/">蓝牙服务</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://example.com"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar.png"/></a><p>To be a better man.</p><a class="info-icon" href="https://twitter.com/username" title="Twitter" target="_blank" style="margin-inline:5px"> <i class="fa fa-twitter-square" style="margin-inline:5px"></i></a><a class="info-icon" href="mailto:admin@domain.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/username" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a><a class="info-icon" href="/atom.xml" title="RSS" target="_blank" style="margin-inline:5px"> <i class="fa fa-rss-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/c-flow/" style="font-size: 15px;">c flow</a> <a href="/tags/%E8%99%9A%E5%87%BD%E6%95%B0%E8%A1%A8/" style="font-size: 15px;">虚函数表</a> <a href="/tags/C-language/" style="font-size: 15px;">C language</a> <a href="/tags/linux-kernel/" style="font-size: 15px;">linux kernel</a> <a href="/tags/%E5%86%85%E5%AD%98/" style="font-size: 15px;">内存</a> <a href="/tags/Embedded-RTOS/" style="font-size: 15px;">Embedded RTOS</a> <a href="/tags/c-language/" style="font-size: 15px;">c language</a> <a href="/tags/RTOS/" style="font-size: 15px;">RTOS</a> <a href="/tags/C-lauguage/" style="font-size: 15px;">C lauguage</a> <a href="/tags/compiler/" style="font-size: 15px;">compiler</a> <a href="/tags/GDB/" style="font-size: 15px;">GDB</a> <a href="/tags/UDP/" style="font-size: 15px;">UDP</a> <a href="/tags/TCP-IP-stack/" style="font-size: 15px;">TCP/IP stack</a> <a href="/tags/compilers/" style="font-size: 15px;">compilers</a> <a href="/tags/ble/" style="font-size: 15px;">ble</a> <a href="/tags/data-struct/" style="font-size: 15px;">data struct</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2025/02/08/UDP%E5%8D%8F%E8%AE%AE/">UDP协议</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/02/05/%E8%93%9D%E7%89%99%E6%9C%8D%E5%8A%A1/">蓝牙服务</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/19/TCP%E5%8D%8F%E8%AE%AE%E4%B8%80/">TCP协议一</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/13/SparrowRTOS%E9%93%BE%E8%A1%A8%E7%89%88%E6%9C%AC/">SparrowRTOS链表版本</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/01/02/%E7%BA%A2%E9%BB%91%E6%A0%91%E5%AE%9E%E7%8E%B0/">红黑树实现</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/23/%E7%A8%8B%E5%BA%8F%E4%BC%98%E5%8C%96%E4%B9%8B%E6%95%B0%E6%8D%AE%E7%AF%87/">程序优化之数据篇</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/21/%E9%BE%99%E4%B9%A6%E9%99%84%E5%BD%95B%E6%B1%82%E8%A7%A3/">龙书附录B求解</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/17/SparrowRTOS%E7%A7%BB%E6%A4%8D/">SparrowRTOS移植</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/11/C4%E6%BA%90%E7%A0%81%E6%AC%A3%E8%B5%8F/">C4编译器源码解析</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/12/10/GdbPythonAPI/">GdbPythonAPI</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.example1.com/" title="site-name1" target="_blank">site-name1</a><ul></ul><a href="http://www.example2.com/" title="site-name2" target="_blank">site-name2</a><ul></ul><a href="http://www.example3.com/" title="site-name3" target="_blank">site-name3</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2025 <a href="/." rel="nofollow">Hexo.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
